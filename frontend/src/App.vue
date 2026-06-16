@@ -4,7 +4,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import BoundaryCanvas from "./components/BoundaryCanvas.vue";
 import {
   backupMetadata,
-  batchUpdateSamples,
   createCatalog,
   deleteTag,
   exportUrl,
@@ -21,7 +20,16 @@ import {
   upsertTag,
   type HealthResponse,
 } from "./api";
-import type { CatalogSummary, InitResponse, LayoutType, ProjectMetadata, SampleMetadata, SampleWarning } from "./types";
+import type {
+  CatalogSummary,
+  InitResponse,
+  LayoutType,
+  MetadataPatch,
+  ProjectMetadata,
+  SampleMetadata,
+  SampleStatus,
+  SampleWarning,
+} from "./types";
 
 const health = ref<HealthResponse | null>(null);
 const healthError = ref<string | null>(null);
@@ -33,7 +41,7 @@ const activeView = ref<"grid" | "detail">("grid");
 const selectedSampleId = ref<string | null>(null);
 const selectedTags = ref<string[]>([]);
 const collapsedTagPaths = ref<string[]>([]);
-const statusFilter = ref<"" | SampleMetadata["status"]>("");
+const statusFilter = ref<"" | SampleMetadata["class_status"]>("");
 const layoutFilter = ref<"" | LayoutType>("");
 const cueFilter = ref<"all" | "missing" | "present">("all");
 const archiveFilter = ref<"active" | "archived" | "trashed" | "all">("active");
@@ -42,7 +50,6 @@ const searchText = ref("");
 const tagDraft = ref("");
 const selectedSampleIds = ref<string[]>([]);
 const lastSelectedIndex = ref<number | null>(null);
-const batchTagDraft = ref("");
 const tagPathDraft = ref("");
 const tagLabelDraft = ref("");
 const tagColorDraft = ref("#64748b");
@@ -77,6 +84,8 @@ interface FlatTag {
   expanded: boolean;
 }
 
+const layoutTypes: LayoutType[] = ["unlabeled", "single", "dual", "triple"];
+
 const samples = computed(() => Object.values(metadata.value?.samples ?? {}));
 const tagList = computed<FlatTag[]>(() => flattenTags(metadata.value?.tag_tree ?? {}));
 const selectedSample = computed(() =>
@@ -89,10 +98,10 @@ const visibleSamples = computed(() => {
     if (archiveFilter.value === "active" && (sample.archived || sample.trashed)) return false;
     if (archiveFilter.value === "archived" && !sample.archived) return false;
     if (archiveFilter.value === "trashed" && !sample.trashed) return false;
-    if (statusFilter.value && sample.status !== statusFilter.value) return false;
+    if (statusFilter.value && sample.class_status !== statusFilter.value) return false;
     if (layoutFilter.value && sample.layout_type !== layoutFilter.value) return false;
-    if (cueFilter.value === "missing" && sample.cue_data_file) return false;
-    if (cueFilter.value === "present" && !sample.cue_data_file) return false;
+    if (cueFilter.value === "missing" && sample.text_info) return false;
+    if (cueFilter.value === "present" && !sample.text_info) return false;
     if (selectedTags.value.length && !selectedTags.value.every((tag) => sample.tags.includes(tag))) {
       return false;
     }
@@ -104,8 +113,8 @@ const visibleSamples = computed(() => {
 const stats = computed(() => ({
   total: samples.value.length,
   visible: visibleSamples.value.length,
-  labeled: samples.value.filter((sample) => sample.status === "labeled").length,
-  flagged: samples.value.filter((sample) => sample.status === "flagged").length,
+  labeled: samples.value.filter((sample) => sample.class_status === "labeled").length,
+  flagged: samples.value.filter((sample) => sample.class_status === "flagged").length,
   warnings: warnings.value.length,
 }));
 const selectedSamples = computed(() =>
@@ -375,11 +384,84 @@ function keywordSampleCount(path: string): number {
   ).length;
 }
 
+function layoutAssignmentState(layoutType: LayoutType): "checked" | "mixed" | "unchecked" {
+  const targets = keywordTargetSamples.value;
+  if (!targets.length) return "unchecked";
+
+  const assignedCount = targets.filter((sample) => sample.layout_type === layoutType).length;
+  if (assignedCount === targets.length) return "checked";
+  if (assignedCount > 0) return "mixed";
+  return "unchecked";
+}
+
+function layoutSampleCount(layoutType: LayoutType): number {
+  return samples.value.filter((sample) => sample.layout_type === layoutType).length;
+}
+
+function layoutLabel(layoutType: LayoutType): string {
+  if (layoutType === "unlabeled") return "布局未标注";
+  if (layoutType === "single") return "单栏";
+  if (layoutType === "dual") return "双栏";
+  return "三栏";
+}
+
+function statusLabel(status: SampleStatus): string {
+  if (status === "unlabeled") return "未标注";
+  if (status === "labeled") return "已标注";
+  return "存疑";
+}
+
+function categoryStatusLabel(sample: SampleMetadata): string {
+  return sample.tags.length ? `已标注 ${sample.tags.length} 个 keyword` : "类别未标注";
+}
+
+function withAutoLabeledStatus(sample: SampleMetadata, patch: MetadataPatch): MetadataPatch {
+  if (patch.class_status !== undefined || sample.class_status !== "unlabeled") return patch;
+
+  const hasAssignedTags = Array.isArray(patch.tags) && patch.tags.length > 0;
+  const hasAssignedLayout = patch.layout_type !== undefined && patch.layout_type !== "unlabeled";
+  const hasEditedLayoutBoundary =
+    patch.boundaries !== undefined && sample.layout_type !== "unlabeled" && sample.layout_type !== "single";
+
+  if (!hasAssignedTags && !hasAssignedLayout && !hasEditedLayoutBoundary) return patch;
+  return { ...patch, class_status: "labeled" };
+}
+
+function defaultBoundariesForLayout(layoutType: LayoutType): [number, number] {
+  if (layoutType === "unlabeled" || layoutType === "single") return [0, 0];
+  if (layoutType === "dual") return [0.5, 0];
+  return [0.3333, 0.6667];
+}
+
+async function assignLayoutToTargets(layoutType: LayoutType): Promise<void> {
+  const targets = [...keywordTargetSamples.value];
+  if (!targets.length) return;
+
+  const patch: MetadataPatch = {
+    layout_type: layoutType,
+    boundaries: defaultBoundariesForLayout(layoutType),
+  };
+
+  try {
+    for (const sample of targets) {
+      metadata.value = await updateSampleMetadata(sample, withAutoLabeledStatus(sample, patch));
+    }
+    feedbackMessage.value = `已将 ${targets.length} 张图片设为 ${layoutLabel(layoutType)}`;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "分栏写入失败";
+  }
+}
+
 async function toggleKeywordAssignment(path: string): Promise<void> {
   const targets = [...keywordTargetSamples.value];
   if (!targets.length) return;
 
   const shouldRemove = targets.every((sample) => sample.tags.includes(path));
+  const previousSamples = targets.map((sample) => ({
+    ...sample,
+    boundaries: [...sample.boundaries] as [number, number],
+    tags: [...sample.tags],
+  }));
   let successCount = 0;
 
   try {
@@ -387,13 +469,16 @@ async function toggleKeywordAssignment(path: string): Promise<void> {
       const nextTags = shouldRemove
         ? sample.tags.filter((tag) => tag !== path)
         : Array.from(new Set([...sample.tags, path]));
-      metadata.value = await updateSampleMetadata(sample, { tags: nextTags });
+      const patch = withAutoLabeledStatus(sample, { tags: nextTags });
+      applySamplePatchLocally(sample.sample_id, patch);
+      metadata.value = await updateSampleMetadata(sample, patch);
       successCount += 1;
     }
     feedbackMessage.value = shouldRemove
       ? `已从 ${successCount} 张图片移除 keyword：${path}`
       : `已为 ${successCount} 张图片添加 keyword：${path}`;
   } catch (error) {
+    previousSamples.forEach((sample) => applySamplePatchLocally(sample.sample_id, sample));
     errorMessage.value = error instanceof Error ? error.message : "Keyword 写入失败";
   }
 }
@@ -480,12 +565,31 @@ function backToGrid(): void {
 async function patchSelectedSample(patch: Parameters<typeof updateSampleMetadata>[1]): Promise<void> {
   const sample = selectedSample.value;
   if (!sample) return;
+  const nextPatch = withAutoLabeledStatus(sample, patch);
+  const previousSample = { ...sample, boundaries: [...sample.boundaries] as [number, number], tags: [...sample.tags] };
 
   try {
-    metadata.value = await updateSampleMetadata(sample, patch);
+    applySamplePatchLocally(sample.sample_id, nextPatch);
+    metadata.value = await updateSampleMetadata(sample, nextPatch);
   } catch (error) {
+    applySamplePatchLocally(sample.sample_id, previousSample);
     errorMessage.value = error instanceof Error ? error.message : "保存失败";
   }
+}
+
+function applySamplePatchLocally(sampleId: string, patch: Partial<SampleMetadata>): void {
+  if (!metadata.value || !metadata.value.samples[sampleId]) return;
+
+  metadata.value = {
+    ...metadata.value,
+    samples: {
+      ...metadata.value.samples,
+      [sampleId]: {
+        ...metadata.value.samples[sampleId],
+        ...patch,
+      },
+    },
+  };
 }
 
 function handleSampleClick(sample: SampleMetadata, event: MouseEvent, index: number): void {
@@ -522,7 +626,7 @@ function clearSelection(): void {
   closeMenus();
 }
 
-function filterByStatus(status: "" | SampleMetadata["status"]): void {
+function filterByStatus(status: "" | SampleMetadata["class_status"]): void {
   statusFilter.value = status;
   closeMenus();
 }
@@ -530,66 +634,6 @@ function filterByStatus(status: "" | SampleMetadata["status"]): void {
 function filterByLayout(layout: "" | LayoutType): void {
   layoutFilter.value = layout;
   closeMenus();
-}
-
-async function applyBatchPatch(patch: Parameters<typeof batchUpdateSamples>[1]): Promise<void> {
-  if (!selectedSampleIds.value.length) return;
-
-  try {
-    const response = await batchUpdateSamples(selectedSampleIds.value, patch);
-    metadata.value = response.metadata;
-    feedbackMessage.value = `批量操作完成：${response.results.filter((result) => result.ok).length}/${response.results.length}`;
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "批量操作失败";
-  }
-}
-
-async function batchAddTags(): Promise<void> {
-  const tagsToAdd = parseTags(batchTagDraft.value);
-  if (!tagsToAdd.length) return;
-
-  await patchSelectedSamplesIndividually((sample) => ({
-    tags: Array.from(new Set([...sample.tags, ...tagsToAdd])),
-  }));
-}
-
-async function batchRemoveTags(): Promise<void> {
-  const tagsToRemove = new Set(parseTags(batchTagDraft.value));
-  if (!tagsToRemove.size) return;
-
-  await patchSelectedSamplesIndividually((sample) => ({
-    tags: sample.tags.filter((tag) => !tagsToRemove.has(tag)),
-  }));
-}
-
-async function patchSelectedSamplesIndividually(
-  createPatch: (sample: SampleMetadata) => Parameters<typeof updateSampleMetadata>[1],
-): Promise<void> {
-  let successCount = 0;
-  const targets = [...selectedSamples.value];
-
-  try {
-    for (const sample of targets) {
-      metadata.value = await updateSampleMetadata(sample, createPatch(sample));
-      successCount += 1;
-    }
-    feedbackMessage.value = `批量标签操作完成：${successCount}/${targets.length}`;
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "批量标签操作失败";
-  }
-}
-
-async function syncCurrentToSelection(fields: Array<"tags" | "layout_type" | "boundaries" | "status">): Promise<void> {
-  const sample = selectedSample.value;
-  if (!sample || selectedSampleIds.value.length <= 1) return;
-
-  const patch: Parameters<typeof applyBatchPatch>[0] = {};
-  if (fields.includes("tags")) patch.tags = sample.tags;
-  if (fields.includes("status")) patch.status = sample.status;
-  if (fields.includes("layout_type")) patch.layout_type = sample.layout_type;
-  if (fields.includes("boundaries")) patch.boundaries = sample.boundaries;
-
-  await applyBatchPatch(patch);
 }
 
 async function createBackup(): Promise<void> {
@@ -604,9 +648,13 @@ async function createBackup(): Promise<void> {
 async function setLayout(layoutType: LayoutType): Promise<void> {
   const current = selectedSample.value;
   if (!current) return;
+  if (boundarySaveTimer) {
+    window.clearTimeout(boundarySaveTimer);
+    boundarySaveTimer = null;
+  }
 
   const boundaries: [number, number] =
-    layoutType === "single"
+    layoutType === "unlabeled" || layoutType === "single"
       ? [0, 0]
       : layoutType === "dual"
         ? [current.boundaries[0] > 0 ? current.boundaries[0] : 0.5, 0]
@@ -627,7 +675,7 @@ function saveBoundariesDebounced(boundaries: [number, number]): void {
 
 async function setStatus(value: string): Promise<void> {
   if (value === "unlabeled" || value === "labeled" || value === "flagged") {
-    await patchSelectedSample({ status: value });
+    await patchSelectedSample({ class_status: value });
   }
 }
 
@@ -650,11 +698,25 @@ async function saveTagsForSample(sampleId: string, tagsText: string): Promise<vo
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+  const sample = metadata.value?.samples[sampleId];
+  const previousSample = sample
+    ? { ...sample, boundaries: [...sample.boundaries] as [number, number], tags: [...sample.tags] }
+    : null;
 
   try {
-    metadata.value = await updateSampleMetadata({ sample_id: sampleId }, { tags });
+    const patch = sample ? withAutoLabeledStatus(sample, { tags }) : { tags };
+    if (sample) {
+      applySamplePatchLocally(sample.sample_id, patch);
+    }
+    metadata.value = await updateSampleMetadata(
+      { sample_id: sampleId },
+      patch,
+    );
     feedbackMessage.value = "标签已保存";
   } catch (error) {
+    if (previousSample) {
+      applySamplePatchLocally(previousSample.sample_id, previousSample);
+    }
     errorMessage.value = error instanceof Error ? error.message : "标签保存失败";
   }
 }
@@ -675,7 +737,7 @@ function scheduleTagAutoSave(): void {
 
 function exportCurrentFilter(): void {
   const params = new URLSearchParams();
-  if (statusFilter.value) params.set("status", statusFilter.value);
+  if (statusFilter.value) params.set("class_status", statusFilter.value);
   if (layoutFilter.value) params.set("layout_type", layoutFilter.value);
   if (searchText.value.trim()) params.set("search", searchText.value.trim());
   if (cueFilter.value === "missing") params.set("missing_cue_data", "true");
@@ -743,7 +805,7 @@ function flattenTags(
 }
 
 function matchesSearch(sample: SampleMetadata, search: string): boolean {
-  return [sample.sample_path, sample.image_file, sample.cue_data_file ?? ""].some((field) =>
+  return [sample.sample_path, sample.image_path, sample.text_info ?? ""].some((field) =>
     field.toLowerCase().includes(search),
   );
 }
@@ -769,10 +831,10 @@ function handleKeyboardShortcut(event: KeyboardEvent): void {
   if (event.key === "1") void setLayout("single");
   if (event.key === "2") void setLayout("dual");
   if (event.key === "3") void setLayout("triple");
-  if (event.key === "f" || event.key === "F") void patchSelectedSample({ status: "flagged" });
+  if (event.key === "f" || event.key === "F") void patchSelectedSample({ class_status: "flagged" });
   if (event.key === " ") {
     event.preventDefault();
-    void patchSelectedSample({ status: "labeled" });
+    void patchSelectedSample({ class_status: "labeled" });
   }
   if (event.key === "ArrowLeft" || event.key === "a" || event.key === "A") moveSelection(-1);
   if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") moveSelection(1);
@@ -842,6 +904,7 @@ function moveSelection(delta: number): void {
           <div class="menu-subgroup">
             <span>基于多栏类别筛选</span>
             <button type="button" @click="filterByStatus('unlabeled')">未打标</button>
+            <button type="button" @click="filterByLayout('unlabeled')">布局未标注</button>
             <button type="button" @click="filterByLayout('single')">单栏</button>
             <button type="button" @click="filterByLayout('dual')">双栏</button>
             <button type="button" @click="filterByLayout('triple')">三栏</button>
@@ -1004,11 +1067,40 @@ function moveSelection(delta: number): void {
           </button>
           <span class="keyword-count">{{ keywordSampleCount(tag.path) }}</span>
         </div>
+
+        <h2 class="sidebar-section-title">Layout Type</h2>
+        <p class="muted keyword-help">
+          先选中一张或多张图片，再点击分栏类型前的勾选框，为选中图片设置单栏/双栏/三栏。
+        </p>
+        <div
+          v-for="layout in layoutTypes"
+          :key="layout"
+          class="tag-row layout-row"
+          :class="{ assigned: layoutAssignmentState(layout) === 'checked' }"
+        >
+          <span class="tag-disclosure invisible">▸</span>
+          <button
+            type="button"
+            class="keyword-check"
+            :class="layoutAssignmentState(layout)"
+            :title="`将选中图片设为 ${layout}`"
+            @click.stop="assignLayoutToTargets(layout)"
+          >
+            <span v-if="layoutAssignmentState(layout) === 'checked'">✓</span>
+            <span v-else-if="layoutAssignmentState(layout) === 'mixed'">—</span>
+          </button>
+          <span class="tag-dot layout-dot" :class="layout"></span>
+          <button type="button" class="tag-label-button" @click="filterByLayout(layout)">
+            <span>{{ layoutLabel(layout) }}</span>
+            <small>{{ layout === "unlabeled" ? "布局未标注" : layout === "single" ? "[0, 0]" : layout === "dual" ? "[x1, 0]" : "[x1, x2]" }}</small>
+          </button>
+          <span class="keyword-count">{{ layoutSampleCount(layout) }}</span>
+        </div>
       </aside>
 
       <section class="main-panel">
         <div class="panel filters-panel">
-          <input v-model="searchText" type="search" placeholder="搜索 sample_path / image_file / cue_data_file" />
+          <input v-model="searchText" type="search" placeholder="搜索 sample_path / image_path / text_info" />
           <select v-model="statusFilter">
             <option value="">全部状态</option>
             <option value="unlabeled">未标注</option>
@@ -1017,6 +1109,7 @@ function moveSelection(delta: number): void {
           </select>
           <select v-model="layoutFilter">
             <option value="">全部分栏</option>
+            <option value="unlabeled">布局未标注</option>
             <option value="single">单栏</option>
             <option value="dual">双栏</option>
             <option value="triple">三栏</option>
@@ -1032,27 +1125,6 @@ function moveSelection(delta: number): void {
             <option value="trashed">回收站</option>
             <option value="all">全部样本</option>
           </select>
-        </div>
-
-        <div class="panel batch-panel">
-          <strong>已选 {{ selectedSampleIds.length }} 张</strong>
-          <input v-model="batchTagDraft" type="text" placeholder="批量标签，逗号分隔" />
-          <button type="button" @click="batchAddTags">追加标签</button>
-          <button type="button" @click="batchRemoveTags">移除标签</button>
-          <button type="button" @click="applyBatchPatch({ layout_type: 'single', boundaries: [0, 0] })">
-            设为单栏
-          </button>
-          <button type="button" @click="applyBatchPatch({ layout_type: 'dual', boundaries: [0.5, 0] })">
-            设为双栏
-          </button>
-          <button type="button" @click="applyBatchPatch({ layout_type: 'triple', boundaries: [0.3333, 0.6667] })">
-            设为三栏
-          </button>
-          <button type="button" @click="applyBatchPatch({ status: 'flagged' })">标记存疑</button>
-          <button type="button" @click="syncCurrentToSelection(['tags', 'status'])">同步当前标签/状态</button>
-          <button type="button" @click="syncCurrentToSelection(['layout_type', 'boundaries'])">
-            同步当前分栏
-          </button>
         </div>
 
         <div v-if="loading" class="panel empty-state">正在扫描数据集...</div>
@@ -1075,8 +1147,8 @@ function moveSelection(delta: number): void {
               @dblclick="openDetail(sample)"
             >
               <img :src="imageUrl(sample.sample_id)" :alt="sample.sample_path" loading="lazy" />
-              <span class="status-badge" :class="sample.status">{{ sample.status }}</span>
-              <span class="layout-badge">{{ sample.layout_type }}</span>
+              <span v-if="!sample.tags.length" class="status-badge category-unlabeled">类别未标注</span>
+              <span class="layout-badge" :class="sample.layout_type">{{ layoutLabel(sample.layout_type) }}</span>
               <strong>{{ sample.sample_path }}</strong>
               <small>{{ sample.tags.join(", ") || "无标签" }}</small>
             </button>
@@ -1091,7 +1163,7 @@ function moveSelection(delta: number): void {
 
           <div class="detail-body">
             <BoundaryCanvas
-              :key="selectedSample.sample_id"
+              :key="`${selectedSample.sample_id}-${selectedSample.layout_type}-${selectedSample.boundaries.join('-')}`"
               :image-src="imageUrl(selectedSample.sample_id)"
               :layout-type="selectedSample.layout_type"
               :boundaries="selectedSample.boundaries"
@@ -1101,7 +1173,7 @@ function moveSelection(delta: number): void {
               <label>
                 状态
                 <select
-                  :value="selectedSample.status"
+                  :value="selectedSample.class_status"
                   @change="setStatusFromEvent"
                 >
                   <option value="unlabeled">未标注</option>
@@ -1109,10 +1181,14 @@ function moveSelection(delta: number): void {
                   <option value="flagged">存疑</option>
                 </select>
               </label>
+              <p class="detail-category-status" :class="{ empty: !selectedSample.tags.length }">
+                {{ categoryStatusLabel(selectedSample) }}
+              </p>
 
               <div>
                 <p class="field-label">分栏</p>
                 <div class="button-group">
+                  <button type="button" @click="setLayout('unlabeled')">布局未标注</button>
                   <button type="button" @click="setLayout('single')">单栏</button>
                   <button type="button" @click="setLayout('dual')">双栏</button>
                   <button type="button" @click="setLayout('triple')">三栏</button>
@@ -1129,12 +1205,48 @@ function moveSelection(delta: number): void {
                 <textarea v-model="tagDraft" rows="4" @input="scheduleTagAutoSave"></textarea>
               </label>
               <button type="button" @click="saveTags">立即保存标签</button>
+              <div class="detail-keyword-panel">
+                <p class="field-label">Keyword 标注</p>
+                <p v-if="!tagList.length" class="muted">暂无 keywords，可在左侧 Keyword List 创建。</p>
+                <div
+                  v-for="tag in tagList"
+                  :key="`detail-${tag.path}`"
+                  class="tag-row detail-tag-row"
+                  :class="{ assigned: keywordAssignmentState(tag.path) === 'checked' }"
+                  :style="{ paddingLeft: `${8 + tag.depth * 16}px` }"
+                >
+                  <button
+                    type="button"
+                    class="tag-disclosure"
+                    :class="{ invisible: !tag.hasChildren }"
+                    :aria-label="tag.expanded ? '收起标签' : '展开标签'"
+                    @click.stop="toggleTagCollapse(tag.path)"
+                  >
+                    {{ tag.expanded ? "▾" : "▸" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="keyword-check"
+                    :class="keywordAssignmentState(tag.path)"
+                    :title="`给当前图片打 keyword：${tag.path}`"
+                    @click.stop="toggleKeywordAssignment(tag.path)"
+                  >
+                    <span v-if="keywordAssignmentState(tag.path) === 'checked'">✓</span>
+                    <span v-else-if="keywordAssignmentState(tag.path) === 'mixed'">—</span>
+                  </button>
+                  <span class="tag-dot" :style="{ background: tag.color ?? '#64748b' }"></span>
+                  <button type="button" class="tag-label-button" @dblclick="selectTagForEdit(tag)">
+                    <span>{{ tag.label }}</span>
+                    <small>{{ tag.path }}</small>
+                  </button>
+                </div>
+              </div>
 
               <dl>
                 <dt>Image</dt>
-                <dd>{{ selectedSample.image_file }}</dd>
-                <dt>CUE Data</dt>
-                <dd>{{ selectedSample.cue_data_file ?? "缺失" }}</dd>
+                <dd>{{ selectedSample.image_path }}</dd>
+                <dt>Text Info</dt>
+                <dd>{{ selectedSample.text_info ?? "缺失" }}</dd>
               </dl>
             </div>
           </div>
@@ -1162,7 +1274,7 @@ function moveSelection(delta: number): void {
         </button>
         <dl v-if="inspectorPanelOpen && selectedSample" class="inspector-list">
           <dt>状态</dt>
-          <dd>{{ selectedSample.status }}</dd>
+          <dd>{{ statusLabel(selectedSample.class_status) }}</dd>
           <dt>分栏</dt>
           <dd>{{ selectedSample.layout_type }}</dd>
           <dt>边界</dt>

@@ -69,27 +69,29 @@ Warning code 建议至少包含：`EMPTY_FOLDER`, `MISSING_IMAGE`, `MULTIPLE_IMA
     "sample_0001": {
       "sample_id": "sample_0001",
       "sample_path": "dataset/app_a/sample_0001",
-      "image_file": "dataset/app_a/sample_0001/screenshot.png",
-      "cue_data_file": "dataset/app_a/sample_0001/tree.json",
-      "status": "labeled", 
+      "image_path": "dataset/app_a/sample_0001/screenshot.png",
+      "text_info": "dataset/app_a/sample_0001/tree.json",
+      "class_status": "labeled", 
       "layout_type": "dual", 
       "boundaries": [0.5000, 0], 
-      "tags": ["ecommerce/cart"] 
+      "tags": ["ecommerce/cart"],
+      "time_updated": "2026-06-16-21-51-06"
     }
   }
 }
 
 ```
 
-*注：`status` 枚举值为 `unlabeled`, `labeled`, `flagged`。`layout_type` 枚举值为 `single`, `dual`, `triple`。*
+*注：`class_status` 枚举值为 `unlabeled`, `labeled`, `flagged`。`layout_type` 枚举值为 `unlabeled`, `single`, `dual`, `triple`。*
 
 ### 字段约束
 
 * `samples` 字典的 key 使用 `sample_id`。`sample_id` 由后端根据初始 `sample_path` 生成，建议使用路径 hash 或路径派生值，避免不同目录下同名文件夹冲突。
 * Sample 的业务主标识为 `sample_path`。API 允许按 `sample_path` 定位样本；后端内部可用 `sample_id` 作为 metadata 字典索引。
-* `sample_id` 创建后保持稳定。归档、移动或恢复 Sample 时，只更新 `sample_path`、`image_file`、`cue_data_file` 和相关状态字段，不重新生成 `sample_id`。
-* 控件树字段全项目统一命名为 `cue_data_file`，不使用 `CUEData_file`。
-* `image_file` 与 `cue_data_file` 均为相对于数据集根目录或工作区根目录的路径，且二者必须位于同一个 Sample 文件夹内。若控件树缺失，`cue_data_file` 为 `null`。
+* `sample_id` 创建后保持稳定。归档、移动或恢复 Sample 时，只更新 `sample_path`、`image_path`、`text_info` 和相关状态字段，不重新生成 `sample_id`。
+* 图片字段全项目统一命名为 `image_path`；控件树/文本信息字段全项目统一命名为 `text_info`。
+* `image_path` 与 `text_info` 均为相对于数据集根目录或工作区根目录的路径，且二者必须位于同一个 Sample 文件夹内。若控件树缺失，`text_info` 为 `null`。
+* `time_updated` 记录该 sample 最近一次 metadata 变更时间，格式为 `yyyy-mm-dd-hh-mm-ss`。
 * 图片合法性先按扩展名筛选；必要时后端使用 Pillow 校验图片是否可读。扩展名不支持返回 `INVALID_IMAGE_FILE`，文件无法读取或解析返回 `UNREADABLE_IMAGE`。
 * `boundaries` 固定为二维数组：
   * `single`: `[0, 0]`
@@ -125,7 +127,7 @@ Warning code 建议至少包含：`EMPTY_FOLDER`, `MISSING_IMAGE`, `MULTIPLE_IMA
 {
   "sample_path": "dataset/app_a/sample_0001",
   "patch": {
-    "status": "labeled",
+    "class_status": "labeled",
     "layout_type": "dual",
     "boundaries": [0.5123, 0],
     "tags": ["ecommerce/cart"]
@@ -137,13 +139,13 @@ Warning code 建议至少包含：`EMPTY_FOLDER`, `MISSING_IMAGE`, `MULTIPLE_IMA
 
 * 移动到 `_archive`：从默认 Grid 中隐藏，但 metadata 保留，可通过筛选查看或恢复。
 * 移动到 `_trash`：从默认 Grid 中隐藏，metadata 保留删除状态，暂不物理删除，允许后续恢复。
-* 移动后 `sample_id` 不变，只更新 `sample_path`、`image_file`、`cue_data_file` 和归档/删除状态。
+* 移动后 `sample_id` 不变，只更新 `sample_path`、`image_path`、`text_info` 和归档/删除状态。
 
 `/api/metadata/export` 导出语义：
 
 * 默认导出完整 `metadata.json`，包括 `project_name`、`tag_tree`、`samples` 和必要的导出时间信息。
-* 支持根据前端当前筛选条件导出子集，例如仅导出 `status=labeled`、`layout_type=dual`、指定 tags、指定路径关键词或无缺陷样本。
-* 导出结果应保留相对路径、固定二维 `boundaries`、`layout_type`、`status`、`tags`、`image_file`、`cue_data_file` 等训练所需字段。
+* 支持根据前端当前筛选条件导出子集，例如仅导出 `class_status=labeled`、`layout_type=dual`、指定 tags、指定路径关键词或无缺陷样本。
+* 导出结果应保留相对路径、固定二维 `boundaries`、`layout_type`、`class_status`、`tags`、`image_path`、`text_info`、`time_updated` 等训练所需字段。
 * 导出接口不修改当前工作区状态。
 
 ---
@@ -160,13 +162,13 @@ Warning code 建议至少包含：`EMPTY_FOLDER`, `MISSING_IMAGE`, `MULTIPLE_IMA
 ### 模块 B：数据看板 (Grid View - 瀑布流)
 
 * **UI呈现：** 缩略图瀑布流，图片边角需有状态指示灯（🟢已标、🟡存疑、⚪未标）与版式角标。
-* **筛选能力：** 支持按 `tags`、`layout_type`、`status`、是否缺少 `cue_data_file`、是否 archived/trashed 进行筛选。
+* **筛选能力：** 支持按 `tags`、`layout_type`、`class_status`、是否缺少 `text_info`、是否 archived/trashed 进行筛选。
 * **组合筛选：** 支持多个筛选条件同时生效，例如“已标注 + 双栏 + 指定标签 + 缺控件树”。
-* **搜索能力：** 支持按 `sample_path`、`image_file`、`cue_data_file`、文件名关键词进行元数据搜索。
+* **搜索能力：** 支持按 `sample_path`、`image_path`、`text_info`、文件名关键词进行元数据搜索。
 * **缺陷面板：** 集中展示初始化扫描和后续操作产生的 warnings/errors，例如缺控件树、多图跳过、不可读图片、存在子文件夹等；点击缺陷项可定位到对应 Sample 或无效目录。
 * **交互逻辑：** 支持 `Ctrl/Cmd` 点选、`Shift` 连选、鼠标拖拽框选。
 * **批量操作：** 选中多图后，右键或通过底部操作栏，实现“批量追加/移除标签”、“批量设为单/双/三栏”、“批量标记为异常”。
-* **批量同步当前图设置：** 在 Detail 或 Grid 中以当前图片为源，将当前图片的 `tags`、`layout_type`、`boundaries`、`status` 中的指定字段同步到选中的多张图片。
+* **批量同步当前图设置：** 在 Detail 或 Grid 中以当前图片为源，将当前图片的 `tags`、`layout_type`、`boundaries`、`class_status` 中的指定字段同步到选中的多张图片。
 * **筛选导出：** 支持将当前筛选结果导出为 metadata 子集，用于后续训练或抽查。
 
 ### 模块 C：详情标注 (Detail View - 单图工作区)
@@ -203,7 +205,7 @@ Warning code 建议至少包含：`EMPTY_FOLDER`, `MISSING_IMAGE`, `MULTIPLE_IMA
    * **完成标准：** 能扫描数据集目录，识别有效 Sample 与结构化 warnings；能初始化/读取/备份/原子写入 `metadata.json`；能通过 API 更新单个 Sample、批量更新 Sample、级联删除标签、重命名标签路径并同步样本 tags、移动 Sample 到 `_archive` 或 `_trash`、手动备份 metadata、导出 metadata。
    * **测试方式：** 准备包含空文件夹、多图、子文件夹、缺控件树、多个控件树、非法图片格式、不可读图片的测试数据集，调用 `/api/workspace/init` 后能得到对应 warning；缺控件树样本仍进入正常标注流；调用更新接口后 `metadata.json` 与 `metadata.backup.json` 均符合预期；调用备份和导出接口能得到可读取的 JSON 文件。
 3. **Step 3 (前端基础架构):** 搭建 Vue3 页面路由结构（Grid / Detail），实现侧边栏树形组件，并对接后端的 `/init` 和 `/update` 接口。
-   * **完成标准：** 前端能展示样本 Grid、warnings、缺陷面板、标签树；能按 `tags`、`layout_type`、`status`、缺控件树状态、归档/删除状态进行筛选；能进行组合筛选和元数据搜索；能进入单图详情页；能修改状态、版式、标签并持久化。
+   * **完成标准：** 前端能展示样本 Grid、warnings、缺陷面板、标签树；能按 `tags`、`layout_type`、`class_status`、缺控件树状态、归档/删除状态进行筛选；能进行组合筛选和元数据搜索；能进入单图详情页；能修改状态、版式、标签并持久化。
    * **测试方式：** 在浏览器中完成一次标签筛选、分栏筛选、状态筛选、组合筛选和 `sample_path` 搜索；进入详情修改标签/状态/版式并刷新页面，确认修改仍存在；warnings 能在缺陷面板中被用户看见并可定位。
 4. **Step 4 (核心 Canvas 交互):** 在 Detail 视图中接入 Fabric.js/原生 Canvas。实现图片的自适应渲染，以及最核心的“垂直参考线拖动、吸附、边界约束和 0~1 坐标转换”逻辑。
    * **完成标准：** 单/双/三栏切换正确生成 `[0, 0]`、`[x1_norm, 0]`、`[x1_norm, x2_norm]`；拖拽参考线时 tooltip 实时显示 4 位小数；吸附与三栏边界约束生效；保存值相对于原图宽度归一化，而不是相对于 Canvas 显示宽度。

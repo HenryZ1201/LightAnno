@@ -20,6 +20,7 @@ from app.models import (
     SampleMetadata,
     SampleWarning,
     TagNode,
+    metadata_timestamp,
 )
 from app.services.paths import relative_posix, safe_join
 from app.services.scanner import scan_dataset
@@ -138,14 +139,15 @@ class MetadataService:
         shutil.move(str(source_dir), str(destination_dir))
 
         new_sample_path = relative_posix(destination_dir, self.dataset_root)
-        image_name = Path(sample.image_file).name
-        cue_name = Path(sample.cue_data_file).name if sample.cue_data_file else None
+        image_name = Path(sample.image_path).name
+        cue_name = Path(sample.text_info).name if sample.text_info else None
 
         sample.sample_path = new_sample_path
-        sample.image_file = f"{new_sample_path}/{image_name}"
-        sample.cue_data_file = f"{new_sample_path}/{cue_name}" if cue_name else None
+        sample.image_path = f"{new_sample_path}/{image_name}"
+        sample.text_info = f"{new_sample_path}/{cue_name}" if cue_name else None
         sample.archived = target == "archive"
         sample.trashed = target == "trash"
+        sample.time_updated = metadata_timestamp()
 
         if target == "restore":
             sample.archived = False
@@ -160,8 +162,11 @@ class MetadataService:
         self._delete_tag_from_tree(metadata.tag_tree, tag_path.split("/"))
 
         for sample_id, sample in metadata.samples.items():
-            sample.tags = [tag for tag in sample.tags if tag != tag_path and not tag.startswith(f"{tag_path}/")]
-            metadata.samples[sample_id] = sample
+            next_tags = [tag for tag in sample.tags if tag != tag_path and not tag.startswith(f"{tag_path}/")]
+            if next_tags != sample.tags:
+                sample.tags = next_tags
+                sample.time_updated = metadata_timestamp()
+                metadata.samples[sample_id] = sample
 
         self.save(metadata)
         return metadata
@@ -206,8 +211,10 @@ class MetadataService:
                     renamed_tags.append(tag.replace(old_tag_path, new_tag_path, 1))
                 else:
                     renamed_tags.append(tag)
-            sample.tags = renamed_tags
-            metadata.samples[sample_id] = sample
+            if renamed_tags != sample.tags:
+                sample.tags = renamed_tags
+                sample.time_updated = metadata_timestamp()
+                metadata.samples[sample_id] = sample
 
         self.save(metadata)
         return metadata
@@ -226,7 +233,7 @@ class MetadataService:
     def export_metadata(
         self,
         *,
-        status: str | None = None,
+        class_status: str | None = None,
         layout_type: str | None = None,
         tags: Iterable[str] = (),
         search: str | None = None,
@@ -244,11 +251,11 @@ class MetadataService:
                 continue
             if not include_trashed and sample.trashed:
                 continue
-            if status and sample.status != status:
+            if class_status and sample.class_status != class_status:
                 continue
             if layout_type and sample.layout_type != layout_type:
                 continue
-            if missing_cue_data is not None and (sample.cue_data_file is None) != missing_cue_data:
+            if missing_cue_data is not None and (sample.text_info is None) != missing_cue_data:
                 continue
             if tag_filters and not tag_filters.issubset(set(sample.tags)):
                 continue
@@ -284,7 +291,7 @@ class MetadataService:
         if sample is None:
             raise HTTPException(status_code=404, detail="Sample not found")
 
-        image_path = safe_join(self.dataset_root, sample.image_file)
+        image_path = safe_join(self.dataset_root, sample.image_path)
         if not image_path.exists():
             raise HTTPException(status_code=404, detail="Image file not found")
         return image_path
@@ -300,11 +307,16 @@ class MetadataService:
         for scanned_id, scanned_sample in scanned_samples.items():
             existing_sample = existing_by_path.get(scanned_sample.sample_path)
             if existing_sample:
+                path_metadata_changed = (
+                    existing_sample.image_path != scanned_sample.image_path
+                    or existing_sample.text_info != scanned_sample.text_info
+                )
                 updated = existing_sample.model_copy(
                     update={
                         "sample_path": scanned_sample.sample_path,
-                        "image_file": scanned_sample.image_file,
-                        "cue_data_file": scanned_sample.cue_data_file,
+                        "image_path": scanned_sample.image_path,
+                        "text_info": scanned_sample.text_info,
+                        "time_updated": metadata_timestamp() if path_metadata_changed else existing_sample.time_updated,
                     }
                 )
                 merged_samples[existing_sample.sample_id] = SampleMetadata.model_validate(
@@ -321,6 +333,8 @@ class MetadataService:
 
     def _apply_patch(self, sample: SampleMetadata, patch: MetadataPatch) -> SampleMetadata:
         patch_data = patch.model_dump(exclude_unset=True)
+        if patch_data:
+            patch_data["time_updated"] = metadata_timestamp()
         candidate = sample.model_copy(update=patch_data)
 
         try:
@@ -418,5 +432,5 @@ class MetadataService:
         return node
 
     def _sample_matches_search(self, sample: SampleMetadata, search_text: str) -> bool:
-        fields = [sample.sample_path, sample.image_file, sample.cue_data_file or ""]
+        fields = [sample.sample_path, sample.image_path, sample.text_info or ""]
         return any(search_text in field.lower() for field in fields)

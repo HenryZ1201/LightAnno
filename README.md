@@ -118,9 +118,9 @@ LightAnno 支持 Lightroom-style 的多 Catalog 工作流：
 
 Grid View 支持：
 
-- 按标签、`status`、`layout_type`、是否缺少 CUE data、归档/删除状态筛选。
+- 按标签、`class_status`、`layout_type`、是否缺少 text info、归档/删除状态筛选。
 - 组合筛选，例如“已标注 + 双栏 + 指定标签 + 缺控件树”。
-- 按 `sample_path`、`image_file`、`cue_data_file` 做元数据搜索。
+- 按 `sample_path`、`image_path`、`text_info` 做元数据搜索。
 - 导出当前筛选结果。
 
 ### 标签树

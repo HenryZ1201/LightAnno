@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 SampleStatus = Literal["unlabeled", "labeled", "flagged"]
-LayoutType = Literal["single", "dual", "triple"]
+LayoutType = Literal["unlabeled", "single", "dual", "triple"]
 WarningCode = Literal[
     "EMPTY_FOLDER",
     "MISSING_IMAGE",
@@ -20,6 +21,10 @@ WarningCode = Literal[
 MoveTarget = Literal["archive", "trash", "restore"]
 
 
+def metadata_timestamp() -> str:
+    return datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+
+
 class TagNode(BaseModel):
     label: str
     color: str | None = None
@@ -29,14 +34,18 @@ class TagNode(BaseModel):
 class SampleMetadata(BaseModel):
     sample_id: str
     sample_path: str
-    image_file: str
-    cue_data_file: str | None = None
-    status: SampleStatus = "unlabeled"
-    layout_type: LayoutType = "single"
+    image_path: str = Field(validation_alias=AliasChoices("image_path", "image_file"))
+    text_info: str | None = Field(default=None, validation_alias=AliasChoices("text_info", "cue_data_file"))
+    class_status: SampleStatus = Field(
+        default="unlabeled",
+        validation_alias=AliasChoices("class_status", "status"),
+    )
+    layout_type: LayoutType = "unlabeled"
     boundaries: list[float] = Field(default_factory=lambda: [0, 0], min_length=2, max_length=2)
     tags: list[str] = Field(default_factory=list)
     archived: bool = False
     trashed: bool = False
+    time_updated: str = Field(default_factory=metadata_timestamp)
 
     @field_validator("boundaries")
     @classmethod
@@ -47,8 +56,8 @@ class SampleMetadata(BaseModel):
     def validate_layout_boundaries(self) -> "SampleMetadata":
         x1, x2 = self.boundaries
 
-        if self.layout_type == "single" and self.boundaries != [0, 0]:
-            raise ValueError("single layout requires boundaries [0, 0]")
+        if self.layout_type in {"unlabeled", "single"} and self.boundaries != [0, 0]:
+            raise ValueError(f"{self.layout_type} layout requires boundaries [0, 0]")
 
         if self.layout_type == "dual" and not (0 < x1 < 1 and x2 == 0):
             raise ValueError("dual layout requires boundaries [x1_norm, 0] with 0 < x1_norm < 1")
@@ -84,11 +93,14 @@ class InitResponse(BaseModel):
 
 
 class MetadataPatch(BaseModel):
-    status: SampleStatus | None = None
+    class_status: SampleStatus | None = Field(
+        default=None,
+        validation_alias=AliasChoices("class_status", "status"),
+    )
     layout_type: LayoutType | None = None
     boundaries: list[float] | None = Field(default=None, min_length=2, max_length=2)
     tags: list[str] | None = None
-    cue_data_file: str | None = None
+    text_info: str | None = Field(default=None, validation_alias=AliasChoices("text_info", "cue_data_file"))
     archived: bool | None = None
     trashed: bool | None = None
 

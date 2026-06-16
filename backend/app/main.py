@@ -162,6 +162,7 @@ async def backup_metadata() -> BackupResponse:
 
 @app.get("/api/metadata/export", response_model=ExportResponse)
 async def export_metadata(
+    class_status: str | None = None,
     status: str | None = None,
     layout_type: str | None = None,
     tags: Annotated[list[str], Query()] = [],
@@ -171,7 +172,7 @@ async def export_metadata(
     include_trashed: bool = False,
 ) -> ExportResponse:
     return metadata_service().export_metadata(
-        status=status,
+        class_status=class_status or status,
         layout_type=layout_type,
         tags=tags,
         search=search,

@@ -1,5 +1,5 @@
 export type SampleStatus = "unlabeled" | "labeled" | "flagged";
-export type LayoutType = "single" | "dual" | "triple";
+export type LayoutType = "unlabeled" | "single" | "dual" | "triple";
 
 export interface TagNode {
   label: string;
@@ -10,14 +10,15 @@ export interface TagNode {
 export interface SampleMetadata {
   sample_id: string;
   sample_path: string;
-  image_file: string;
-  cue_data_file: string | null;
-  status: SampleStatus;
+  image_path: string;
+  text_info: string | null;
+  class_status: SampleStatus;
   layout_type: LayoutType;
   boundaries: [number, number];
   tags: string[];
   archived: boolean;
   trashed: boolean;
+  time_updated: string;
 }
 
 export interface ProjectMetadata {
@@ -42,23 +43,13 @@ export interface InitResponse {
 }
 
 export interface MetadataPatch {
-  status?: SampleStatus;
+  class_status?: SampleStatus;
   layout_type?: LayoutType;
   boundaries?: [number, number];
   tags?: string[];
-  cue_data_file?: string | null;
+  text_info?: string | null;
   archived?: boolean;
   trashed?: boolean;
-}
-
-export interface BatchMetadataResponse {
-  results: Array<{
-    sample_id: string | null;
-    sample_path: string | null;
-    ok: boolean;
-    message: string;
-  }>;
-  metadata: ProjectMetadata;
 }
 
 export interface CatalogSummary {

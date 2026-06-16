@@ -23,6 +23,7 @@ interface ImageRect {
 const SNAP_POINTS = [0.3333, 0.5, 0.6667];
 const SNAP_TOLERANCE = 0.02;
 const MIN_GAP = 0.02;
+const HIT_TOLERANCE = 18;
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -34,11 +35,12 @@ const draggingIndex = ref<number | null>(null);
 const hoverIndex = ref<number | null>(null);
 const tooltip = ref<{ x: number; y: number; value: number } | null>(null);
 const localBoundaries = ref<[number, number]>([...props.boundaries] as [number, number]);
+const imageLoadState = ref<"loading" | "loaded" | "error">("loading");
 
 let resizeObserver: ResizeObserver | null = null;
 
 const activeBoundaries = computed(() => {
-  if (props.layoutType === "single") return [];
+  if (props.layoutType === "unlabeled" || props.layoutType === "single") return [];
   if (props.layoutType === "dual") return [localBoundaries.value[0]];
   return localBoundaries.value;
 });
@@ -86,14 +88,19 @@ async function loadImage(): Promise<void> {
   if (!props.imageSrc) return;
 
   const image = new Image();
-  image.crossOrigin = "anonymous";
-  image.src = props.imageSrc;
+  imageLoadState.value = "loading";
 
   try {
-    await image.decode();
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Image failed to load"));
+      image.src = props.imageSrc;
+    });
     imageElement.value = image;
+    imageLoadState.value = "loaded";
   } catch {
     imageElement.value = null;
+    imageLoadState.value = "error";
   }
 }
 
@@ -117,7 +124,7 @@ function handleWindowResize(): void {
 function drawCanvas(): void {
   const canvas = canvasRef.value;
   const image = imageElement.value;
-  if (!canvas || !image) return;
+  if (!canvas) return;
 
   const context = canvas.getContext("2d");
   if (!context) return;
@@ -132,6 +139,8 @@ function drawCanvas(): void {
   context.clearRect(0, 0, canvasWidth.value, canvasHeight.value);
   context.fillStyle = "#0f172a";
   context.fillRect(0, 0, canvasWidth.value, canvasHeight.value);
+
+  if (!image) return;
 
   const rect = calculateImageRect(image, canvasWidth.value, canvasHeight.value);
   imageRect.value = rect;
@@ -272,7 +281,7 @@ function nearestBoundaryIndex(event: PointerEvent): number | null {
   activeBoundaries.value.forEach((boundary, index) => {
     const x = rect.x + boundary * rect.width;
     const distance = Math.abs(pointerX - x);
-    if (distance <= 10 && distance < bestDistance) {
+    if (distance <= HIT_TOLERANCE && distance < bestDistance) {
       bestIndex = index;
       bestDistance = distance;
     }
@@ -303,10 +312,17 @@ function round4(value: number): number {
       @pointerdown="handlePointerDown"
       @pointermove="handlePointerMove"
       @pointerup="handlePointerUp"
+      @pointercancel="handlePointerUp"
       @pointerleave="handlePointerUp"
     ></canvas>
 
-    <div v-if="layoutType === 'single'" class="canvas-hint">单栏模式，无需边界线</div>
+    <div v-if="imageLoadState === 'loading'" class="canvas-hint canvas-hint-warning">正在加载图片...</div>
+    <div v-else-if="imageLoadState === 'error'" class="canvas-hint canvas-hint-warning">
+      图片加载失败，请检查该 sample 的 image_path 路径
+    </div>
+    <div v-else-if="layoutType === 'unlabeled'" class="canvas-hint">请选择双栏或三栏后拖动竖线标注边界</div>
+    <div v-else-if="layoutType === 'single'" class="canvas-hint">单栏模式，无需边界线</div>
+    <div v-else class="canvas-hint">拖动橙色竖线调整边界，靠近 1/3、1/2、2/3 会自动吸附</div>
     <div
       v-if="tooltip"
       class="boundary-tooltip"

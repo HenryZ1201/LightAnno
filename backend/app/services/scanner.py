@@ -94,7 +94,7 @@ def scan_dataset(dataset_root: Path) -> tuple[dict[str, SampleMetadata], list[Sa
             for path in files
             if path.suffix.lower() in CUE_DATA_EXTENSIONS and "cuedata" in path.name.lower()
         ]
-        cue_data_file: str | None = None
+        text_info: str | None = None
 
         if not cue_candidates:
             warnings.append(
@@ -114,17 +114,17 @@ def scan_dataset(dataset_root: Path) -> tuple[dict[str, SampleMetadata], list[Sa
                         details={"cue_data_files": [path.name for path in cue_candidates]},
                     )
                 )
-            cue_data_file = relative_posix(cue_candidates[0], dataset_root)
+            text_info = relative_posix(cue_candidates[0], dataset_root)
 
         image_relative_path = relative_posix(image_file, dataset_root)
         sample_id = sample_id_from_path(sample_path)
         samples[sample_id] = SampleMetadata(
             sample_id=sample_id,
             sample_path=sample_path,
-            image_file=image_relative_path,
-            cue_data_file=cue_data_file,
-            status="unlabeled",
-            layout_type="single",
+            image_path=image_relative_path,
+            text_info=text_info,
+            class_status="unlabeled",
+            layout_type="unlabeled",
             boundaries=[0, 0],
             tags=[],
         )

@@ -1,5 +1,4 @@
 import type {
-  BatchMetadataResponse,
   CatalogsResponse,
   InitResponse,
   MetadataPatch,
@@ -77,19 +76,6 @@ export async function updateSampleMetadata(
     method: "POST",
     body: JSON.stringify({
       sample_id: sample.sample_id,
-      patch,
-    }),
-  });
-}
-
-export async function batchUpdateSamples(
-  sampleIds: string[],
-  patch: MetadataPatch,
-): Promise<BatchMetadataResponse> {
-  return requestJson<BatchMetadataResponse>("/api/metadata/batch", {
-    method: "POST",
-    body: JSON.stringify({
-      sample_ids: sampleIds,
       patch,
     }),
   });
