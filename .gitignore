@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+dist/
+.vite/
+.env
+.env.local
+metadata.json
+metadata.backup*.json
+exports/
+data/
+data_test/
+catalogs/
