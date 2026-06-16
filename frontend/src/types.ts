@@ -1,9 +1,8 @@
-export type SampleStatus = "unlabeled" | "labeled" | "flagged";
+export type SampleStatus = "unlabeled" | "labeled";
 export type LayoutType = "unlabeled" | "single" | "dual" | "triple";
 
 export interface TagNode {
   label: string;
-  color?: string | null;
   children: Record<string, TagNode>;
 }
 
@@ -18,6 +17,7 @@ export interface SampleMetadata {
   tags: string[];
   archived: boolean;
   trashed: boolean;
+  flagged: boolean;
   time_updated: string;
 }
 
@@ -50,6 +50,7 @@ export interface MetadataPatch {
   text_info?: string | null;
   archived?: boolean;
   trashed?: boolean;
+  flagged?: boolean;
 }
 
 export interface CatalogSummary {
@@ -64,4 +65,40 @@ export interface CatalogSummary {
 export interface CatalogsResponse {
   active_catalog_id: string | null;
   catalogs: CatalogSummary[];
+}
+
+export interface OperationResult {
+  sample_id: string | null;
+  sample_path: string | null;
+  ok: boolean;
+  message: string;
+}
+
+export interface BatchMetadataResponse {
+  results: OperationResult[];
+  metadata: ProjectMetadata;
+}
+
+export interface ContextMenuItem {
+  label: string;
+  action?: () => void;
+  disabled?: boolean;
+  separator?: boolean;
+}
+
+export interface FlatTag {
+  path: string;
+  label: string;
+  depth: number;
+  hasChildren: boolean;
+  expanded: boolean;
+}
+
+export interface FlatFolder {
+  path: string;
+  name: string;
+  depth: number;
+  hasChildren: boolean;
+  expanded: boolean;
+  sampleCount: number;
 }

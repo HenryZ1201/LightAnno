@@ -13,5 +13,7 @@ metadata.json
 metadata.backup*.json
 exports/
 data/
-data_test/
+*data*/
 catalogs/
+temp.txt
+.gitignore

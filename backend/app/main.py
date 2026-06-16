@@ -141,12 +141,12 @@ async def delete_tag(request: DeleteTagRequest) -> ProjectMetadata:
 
 @app.post("/api/tags/upsert", response_model=ProjectMetadata)
 async def upsert_tag(request: UpsertTagRequest) -> ProjectMetadata:
-    return metadata_service().upsert_tag(request.tag_path, request.label, request.color)
+    return metadata_service().upsert_tag(request.tag_path, request.label)
 
 
 @app.post("/api/tags/update", response_model=ProjectMetadata)
 async def update_tag(request: UpdateTagRequest) -> ProjectMetadata:
-    return metadata_service().update_tag(request.tag_path, request.label, request.color)
+    return metadata_service().update_tag(request.tag_path, request.label)
 
 
 @app.post("/api/tags/rename-path", response_model=ProjectMetadata)

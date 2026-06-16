@@ -45,11 +45,14 @@ class MetadataService:
 
         try:
             data = json.loads(self.metadata_path.read_text(encoding="utf-8"))
-            return ProjectMetadata.model_validate(data)
+            metadata = ProjectMetadata.model_validate(data)
+            self._sync_class_status_with_tags(metadata)
+            return metadata
         except (json.JSONDecodeError, ValidationError) as error:
             raise HTTPException(status_code=500, detail=f"Invalid metadata.json: {error}") from error
 
     def save(self, metadata: ProjectMetadata) -> None:
+        self._sync_class_status_with_tags(metadata)
         self.workspace_root.mkdir(parents=True, exist_ok=True)
 
         if self.metadata_path.exists():
@@ -59,6 +62,13 @@ class MetadataService:
         payload = metadata.model_dump(mode="json")
         tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp_path, self.metadata_path)
+
+    def _sync_class_status_with_tags(self, metadata: ProjectMetadata) -> None:
+        for sample in metadata.samples.values():
+            if sample.tags and sample.class_status != "labeled":
+                sample.class_status = "labeled"
+            elif not sample.tags and sample.class_status == "labeled":
+                sample.class_status = "unlabeled"
 
     def initialize_workspace(self) -> tuple[ProjectMetadata, list[SampleWarning]]:
         existing = self.load()
@@ -171,26 +181,23 @@ class MetadataService:
         self.save(metadata)
         return metadata
 
-    def upsert_tag(self, tag_path: str, label: str, color: str | None = None) -> ProjectMetadata:
+    def upsert_tag(self, tag_path: str, label: str) -> ProjectMetadata:
         metadata = self.load()
         parts = self._validate_tag_path(tag_path)
         parent = self._ensure_tag_parent(metadata.tag_tree, parts[:-1])
         existing = parent.get(parts[-1])
         parent[parts[-1]] = TagNode(
             label=label,
-            color=color if color is not None else existing.color if existing else None,
             children=existing.children if existing else {},
         )
         self.save(metadata)
         return metadata
 
-    def update_tag(self, tag_path: str, label: str | None = None, color: str | None = None) -> ProjectMetadata:
+    def update_tag(self, tag_path: str, label: str | None = None) -> ProjectMetadata:
         metadata = self.load()
         node = self._get_tag_node(metadata.tag_tree, self._validate_tag_path(tag_path))
         if label is not None:
             node.label = label
-        if color is not None:
-            node.color = color
         self.save(metadata)
         return metadata
 

@@ -1,4 +1,5 @@
 import type {
+  BatchMetadataResponse,
   CatalogsResponse,
   InitResponse,
   MetadataPatch,
@@ -81,17 +82,28 @@ export async function updateSampleMetadata(
   });
 }
 
+export async function batchUpdateSamples(
+  sampleIds: string[],
+  patch: MetadataPatch,
+): Promise<BatchMetadataResponse> {
+  return requestJson<BatchMetadataResponse>("/api/metadata/batch", {
+    method: "POST",
+    body: JSON.stringify({
+      sample_ids: sampleIds,
+      patch,
+    }),
+  });
+}
+
 export async function upsertTag(
   tagPath: string,
   label: string,
-  color?: string,
 ): Promise<ProjectMetadata> {
   return requestJson<ProjectMetadata>("/api/tags/upsert", {
     method: "POST",
     body: JSON.stringify({
       tag_path: tagPath,
       label,
-      color: color || null,
     }),
   });
 }
@@ -99,14 +111,12 @@ export async function upsertTag(
 export async function updateTag(
   tagPath: string,
   label?: string,
-  color?: string,
 ): Promise<ProjectMetadata> {
   return requestJson<ProjectMetadata>("/api/tags/update", {
     method: "POST",
     body: JSON.stringify({
       tag_path: tagPath,
       label,
-      color,
     }),
   });
 }

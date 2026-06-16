@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   boundariesChange: [boundaries: [number, number]];
+  dblclick: [];
 }>();
 
 interface ImageRect {
@@ -111,9 +112,8 @@ function resizeCanvas(): void {
 
   const width = Math.max(container.clientWidth, 320);
   const aspectHeight = image ? width * (image.naturalHeight / image.naturalWidth) : 560;
-  const height = Math.min(Math.max(aspectHeight, 420), 760);
   canvasWidth.value = width;
-  canvasHeight.value = height;
+  canvasHeight.value = aspectHeight;
 }
 
 function handleWindowResize(): void {
@@ -305,7 +305,7 @@ function round4(value: number): number {
 </script>
 
 <template>
-  <div ref="containerRef" class="boundary-canvas-wrap">
+  <div ref="containerRef" class="boundary-canvas-wrap" @dblclick="emit('dblclick')">
     <canvas
       ref="canvasRef"
       class="boundary-canvas"

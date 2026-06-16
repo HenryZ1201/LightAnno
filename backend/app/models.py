@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
-SampleStatus = Literal["unlabeled", "labeled", "flagged"]
+SampleStatus = Literal["unlabeled", "labeled"]
 LayoutType = Literal["unlabeled", "single", "dual", "triple"]
 WarningCode = Literal[
     "EMPTY_FOLDER",
@@ -27,7 +27,6 @@ def metadata_timestamp() -> str:
 
 class TagNode(BaseModel):
     label: str
-    color: str | None = None
     children: dict[str, "TagNode"] = Field(default_factory=dict)
 
 
@@ -45,6 +44,7 @@ class SampleMetadata(BaseModel):
     tags: list[str] = Field(default_factory=list)
     archived: bool = False
     trashed: bool = False
+    flagged: bool = False
     time_updated: str = Field(default_factory=metadata_timestamp)
 
     @field_validator("boundaries")
@@ -103,6 +103,7 @@ class MetadataPatch(BaseModel):
     text_info: str | None = Field(default=None, validation_alias=AliasChoices("text_info", "cue_data_file"))
     archived: bool | None = None
     trashed: bool | None = None
+    flagged: bool | None = None
 
 
 class MetadataUpdateRequest(BaseModel):
@@ -174,13 +175,11 @@ class RenameTagPathRequest(BaseModel):
 class UpsertTagRequest(BaseModel):
     tag_path: str
     label: str
-    color: str | None = None
 
 
 class UpdateTagRequest(BaseModel):
     tag_path: str
     label: str | None = None
-    color: str | None = None
 
 
 class CatalogSummary(BaseModel):
