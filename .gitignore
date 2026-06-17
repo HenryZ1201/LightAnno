@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 node_modules/
+frontend/node_modules.tar.gz
 dist/
 .vite/
 .env
