@@ -32,18 +32,25 @@ let pointerId: number | null = null;
 const scrollTop = ref(0);
 const containerHeight = ref(800);
 const containerWidth = ref(1200);
-const OVERSCAN = 5; // Extra rows to render above/below viewport
+const OVERSCAN = 4; // Extra rows to render above/below viewport
+const GRID_GAP = 12;
+const GRID_PADDING_X = 28;
+const CARD_TEXT_HEIGHT = 48;
 
 // Calculate grid dimensions
 const gridDimensions = computed(() => {
-  const itemSize = filters.gridMinSize;
-  const gap = 12;
-  const columns = Math.max(1, Math.floor((containerWidth.value + gap) / (itemSize + gap)));
-  const rowHeight = itemSize + gap;
+  const minItemSize = filters.gridMinSize;
+  const availableWidth = Math.max(0, containerWidth.value - GRID_PADDING_X);
+  const columns = Math.max(1, Math.floor((availableWidth + GRID_GAP) / (minItemSize + GRID_GAP)));
+  const itemWidth = Math.max(
+    minItemSize,
+    (availableWidth - GRID_GAP * (columns - 1)) / columns,
+  );
+  const rowHeight = Math.ceil(itemWidth * (16 / 9) + CARD_TEXT_HEIGHT + GRID_GAP);
   const totalRows = Math.ceil(props.visibleSamples.length / columns);
   const totalHeight = totalRows * rowHeight;
 
-  return { columns, rowHeight, totalRows, totalHeight, gap, itemSize };
+  return { columns, rowHeight, totalRows, totalHeight, itemWidth };
 });
 
 // Calculate visible range
@@ -105,8 +112,13 @@ onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
 });
 
-// Reset scroll when samples change
-watch(() => props.visibleSamples, () => {
+const visibleSamplesSignature = computed(() => {
+  const first = props.visibleSamples[0]?.sample_id ?? "";
+  const last = props.visibleSamples.at(-1)?.sample_id ?? "";
+  return `${props.visibleSamples.length}:${first}:${last}`;
+});
+
+watch(visibleSamplesSignature, () => {
   if (gridContainerRef.value) {
     gridContainerRef.value.scrollTop = 0;
   }
@@ -229,6 +241,8 @@ const rubberBandStyle = computed(() => {
         class="sample-grid"
         :style="{
           '--grid-min-size': `${filters.gridMinSize}px`,
+          '--grid-item-width': `${gridDimensions.itemWidth}px`,
+          gridTemplateColumns: `repeat(${gridDimensions.columns}, minmax(0, 1fr))`,
           transform: `translateY(${renderOffset.top}px)`
         }"
       >
