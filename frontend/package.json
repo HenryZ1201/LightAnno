@@ -10,6 +10,7 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@tanstack/vue-virtual": "^3.13.29",
     "@vitejs/plugin-vue": "latest",
     "fabric": "latest",
     "vue": "latest"

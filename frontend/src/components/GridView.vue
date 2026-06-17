@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onUnmounted, ref } from "vue";
+import { computed, inject, onMounted, onUnmounted, ref, watch } from "vue";
 
 import { FILTERS_KEY, SELECTION_KEY, WORKSPACE_KEY } from "../keys";
 import type { SampleMetadata } from "../types";
@@ -27,6 +27,89 @@ const rubberBand = ref<{ startX: number; startY: number; currentX: number; curre
 });
 
 let pointerId: number | null = null;
+
+// Virtual scrolling state
+const scrollTop = ref(0);
+const containerHeight = ref(800);
+const containerWidth = ref(1200);
+const OVERSCAN = 5; // Extra rows to render above/below viewport
+
+// Calculate grid dimensions
+const gridDimensions = computed(() => {
+  const itemSize = filters.gridMinSize;
+  const gap = 12;
+  const columns = Math.max(1, Math.floor((containerWidth.value + gap) / (itemSize + gap)));
+  const rowHeight = itemSize + gap;
+  const totalRows = Math.ceil(props.visibleSamples.length / columns);
+  const totalHeight = totalRows * rowHeight;
+
+  return { columns, rowHeight, totalRows, totalHeight, gap, itemSize };
+});
+
+// Calculate visible range
+const visibleRange = computed(() => {
+  const { rowHeight, totalRows } = gridDimensions.value;
+  const startIndex = Math.floor(scrollTop.value / rowHeight);
+  const visibleRows = Math.ceil(containerHeight.value / rowHeight);
+
+  const start = Math.max(0, startIndex - OVERSCAN);
+  const end = Math.min(totalRows, startIndex + visibleRows + OVERSCAN);
+
+  return { start, end };
+});
+
+// Get samples to render
+const renderedSamples = computed(() => {
+  const { columns } = gridDimensions.value;
+  const { start, end } = visibleRange.value;
+
+  const startIndex = start * columns;
+  const endIndex = Math.min(props.visibleSamples.length, end * columns);
+
+  return props.visibleSamples.slice(startIndex, endIndex);
+});
+
+// Calculate offset for rendered items
+const renderOffset = computed(() => {
+  const { columns, rowHeight } = gridDimensions.value;
+  const { start } = visibleRange.value;
+
+  return {
+    top: start * rowHeight,
+    startIndex: start * columns
+  };
+});
+
+// Handle scroll
+function handleScroll(event: Event): void {
+  const target = event.target as HTMLElement;
+  scrollTop.value = target.scrollTop;
+}
+
+// Handle resize
+function handleResize(): void {
+  if (gridContainerRef.value) {
+    containerHeight.value = gridContainerRef.value.clientHeight;
+    containerWidth.value = gridContainerRef.value.clientWidth;
+  }
+}
+
+onMounted(() => {
+  handleResize();
+  window.addEventListener("resize", handleResize);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", handleResize);
+});
+
+// Reset scroll when samples change
+watch(() => props.visibleSamples, () => {
+  if (gridContainerRef.value) {
+    gridContainerRef.value.scrollTop = 0;
+  }
+  scrollTop.value = 0;
+});
 
 function handleGridPointerDown(event: PointerEvent): void {
   const target = event.target as HTMLElement;
@@ -127,6 +210,7 @@ const rubberBandStyle = computed(() => {
   <div
     ref="gridContainerRef"
     class="sample-grid-container"
+    @scroll="handleScroll"
     @pointerdown="handleGridPointerDown"
     @pointermove="handleGridPointerMove"
     @pointerup="handleGridPointerUp"
@@ -134,16 +218,31 @@ const rubberBandStyle = computed(() => {
     <div v-if="!visibleSamples.length" class="panel empty-state">
       没有匹配当前筛选条件的样本。
     </div>
-    <div v-else class="sample-grid" :style="{ '--grid-min-size': `${filters.gridMinSize}px` }">
-      <SampleCard
-        v-for="(sample, index) in visibleSamples"
-        :key="sample.sample_id"
-        :sample="sample"
-        :selected="sample.sample_id === selection.selectedSampleId"
-        :multi-selected="selection.selectedSampleIds.includes(sample.sample_id)"
-        @select="({ sample: s, event: e }) => selection.handleSampleClick(s, e, index, visibleSamples)"
-        @dblclick="emit('openDetail', sample)"
-      />
+    <div
+      v-else
+      class="virtual-scroll-container"
+      :style="{ height: `${gridDimensions.totalHeight}px` }"
+    >
+      <div
+        class="sample-grid"
+        :style="{
+          '--grid-min-size': `${filters.gridMinSize}px`,
+          transform: `translateY(${renderOffset.top}px)`
+        }"
+      >
+        <SampleCard
+          v-for="(sample, index) in renderedSamples"
+          :key="sample.sample_id"
+          :sample="sample"
+          :selected="sample.sample_id === selection.selectedSampleId"
+          :multi-selected="selection.selectedSampleIds.includes(sample.sample_id)"
+          @select="({ sample: s, event: e }) => {
+            const realIndex = renderOffset.startIndex + index;
+            selection.handleSampleClick(s, e, realIndex, visibleSamples);
+          }"
+          @dblclick="emit('openDetail', sample)"
+        />
+      </div>
     </div>
 
     <div
@@ -153,3 +252,15 @@ const rubberBandStyle = computed(() => {
     ></div>
   </div>
 </template>
+
+<style scoped>
+.virtual-scroll-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.sample-grid-container {
+  overflow-y: auto;
+  height: 100%;
+}
+</style>
