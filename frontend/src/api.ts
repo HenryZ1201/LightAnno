@@ -69,11 +69,87 @@ export async function importFolder(catalogId: string, folderPath: string): Promi
   });
 }
 
+export interface ImportProgress {
+  type: "progress" | "complete" | "error";
+  current?: number;
+  total?: number;
+  current_folder?: string;
+  samples?: SampleMetadata[];
+  warnings?: any[];
+  metadata?: ProjectMetadata;
+  message?: string;
+}
+
+export function importFolderWithProgress(
+  catalogId: string,
+  folderPath: string,
+  onProgress: (progress: ImportProgress) => void,
+): Promise<InitResponse> {
+  return new Promise((resolve, reject) => {
+    const response = fetch(`${API_BASE_URL}/api/catalogs/${encodeURIComponent(catalogId)}/import-folder-stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        folder_path: folderPath,
+      }),
+    });
+
+    response.then(async (res) => {
+      if (!res.ok) {
+        reject(new Error(`Import failed: ${res.status}`));
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) {
+        reject(new Error("No response body"));
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            try {
+              const progress = JSON.parse(data) as ImportProgress;
+              onProgress(progress);
+
+              if (progress.type === "complete") {
+                resolve({
+                  metadata: progress.metadata!,
+                  samples: progress.samples ?? [],
+                  warnings: progress.warnings!,
+                });
+              } else if (progress.type === "error") {
+                reject(new Error(progress.message));
+              }
+            } catch (e) {
+              console.error("Failed to parse progress:", e);
+            }
+          }
+        }
+      }
+    }).catch(reject);
+  });
+}
+
 export async function updateSampleMetadata(
   sample: Pick<SampleMetadata, "sample_id">,
   patch: MetadataPatch,
-): Promise<ProjectMetadata> {
-  return requestJson<ProjectMetadata>("/api/metadata/update", {
+): Promise<SampleMetadata> {
+  return requestJson<SampleMetadata>("/api/metadata/update", {
     method: "POST",
     body: JSON.stringify({
       sample_id: sample.sample_id,

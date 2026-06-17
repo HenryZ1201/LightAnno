@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Generator
 
 from PIL import Image, UnidentifiedImageError
 
@@ -17,13 +18,33 @@ def sample_id_from_path(sample_path: str) -> str:
     return f"sample_{digest}"
 
 
-def scan_dataset(dataset_root: Path) -> tuple[dict[str, SampleMetadata], list[SampleWarning]]:
+def count_folders(dataset_root: Path) -> int:
+    """Count total folders to be scanned."""
+    return sum(1 for path in dataset_root.rglob("*") if path.is_dir())
+
+
+def scan_dataset_with_progress(
+    dataset_root: Path,
+) -> Generator[dict, None, tuple[dict[str, SampleMetadata], list[SampleWarning]]]:
+    """Scan dataset and yield progress updates."""
     dataset_root.mkdir(parents=True, exist_ok=True)
 
     samples: dict[str, SampleMetadata] = {}
     warnings: list[SampleWarning] = []
 
-    for folder in sorted(path for path in dataset_root.rglob("*") if path.is_dir()):
+    # Get all folders first
+    all_folders = sorted(path for path in dataset_root.rglob("*") if path.is_dir())
+    total_folders = len(all_folders)
+
+    for idx, folder in enumerate(all_folders, 1):
+        if idx == 1 or idx == total_folders or idx % 100 == 0:
+            yield {
+                "type": "progress",
+                "current": idx,
+                "total": total_folders,
+                "current_folder": folder.name,
+            }
+
         child_dirs = sorted(path for path in folder.iterdir() if path.is_dir())
         files = sorted(path for path in folder.iterdir() if path.is_file())
 
@@ -130,6 +151,17 @@ def scan_dataset(dataset_root: Path) -> tuple[dict[str, SampleMetadata], list[Sa
         )
 
     return samples, warnings
+
+
+def scan_dataset(dataset_root: Path) -> tuple[dict[str, SampleMetadata], list[SampleWarning]]:
+    """Legacy function for backward compatibility."""
+    generator = scan_dataset_with_progress(dataset_root)
+    # Consume all progress updates
+    while True:
+        try:
+            next(generator)
+        except StopIteration as e:
+            return e.value
 
 
 def _is_readable_image(path: Path) -> bool:

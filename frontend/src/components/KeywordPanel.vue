@@ -67,9 +67,7 @@ function keywordAssignmentState(path: string): "checked" | "mixed" | "unchecked"
 }
 
 function keywordSampleCount(path: string): number {
-  return workspace.samples.filter((s) =>
-    s.tags.some((t) => t === path || t.startsWith(`${path}/`)),
-  ).length;
+  return workspace.keywordCounts.get(path) ?? 0;
 }
 
 async function toggleKeywordAssignment(path: string): Promise<void> {

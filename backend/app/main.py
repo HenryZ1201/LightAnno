@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
@@ -23,6 +23,7 @@ from app.models import (
     MoveRequest,
     ProjectMetadata,
     RenameTagPathRequest,
+    SampleMetadata,
     UpdateTagRequest,
     UpsertTagRequest,
 )
@@ -71,25 +72,40 @@ async def list_catalogs() -> CatalogsResponse:
 @app.post("/api/catalogs", response_model=InitResponse)
 async def create_catalog(request: CatalogCreateRequest) -> InitResponse:
     _, metadata = catalog_service.create_catalog(request.name, request.dataset_root)
-    return InitResponse(metadata=metadata, samples=list(metadata.samples.values()), warnings=[])
+    return InitResponse(metadata=metadata, samples=[], warnings=[])
 
 
 @app.post("/api/catalogs/open", response_model=InitResponse)
 async def open_catalog(request: CatalogOpenRequest) -> InitResponse:
     _, metadata = catalog_service.open_catalog(request.catalog_id)
-    return InitResponse(metadata=metadata, samples=list(metadata.samples.values()), warnings=[])
+    return InitResponse(metadata=metadata, samples=[], warnings=[])
 
 
 @app.post("/api/catalogs/open-path", response_model=InitResponse)
 async def open_catalog_path(request: CatalogOpenPathRequest) -> InitResponse:
     _, metadata = catalog_service.open_catalog_path(request.catalog_path)
-    return InitResponse(metadata=metadata, samples=list(metadata.samples.values()), warnings=[])
+    return InitResponse(metadata=metadata, samples=[], warnings=[])
 
 
 @app.post("/api/catalogs/{catalog_id}/import-folder", response_model=InitResponse)
 async def import_folder(catalog_id: str, request: CatalogImportRequest) -> InitResponse:
     metadata, warnings = catalog_service.import_folder(catalog_id, request.folder_path)
-    return InitResponse(metadata=metadata, samples=list(metadata.samples.values()), warnings=warnings)
+    return InitResponse(metadata=metadata, samples=[], warnings=warnings)
+
+
+@app.post("/api/catalogs/{catalog_id}/import-folder-stream")
+async def import_folder_stream(catalog_id: str, request: CatalogImportRequest):
+    """Stream import progress using Server-Sent Events."""
+    import json
+
+    def event_stream():
+        try:
+            for update in catalog_service.import_folder_with_progress(catalog_id, request.folder_path):
+                yield f"data: {json.dumps(update, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/api/workspace/init", response_model=InitResponse)
@@ -97,7 +113,7 @@ async def initialize_workspace() -> InitResponse:
     metadata, warnings = metadata_service().initialize_workspace()
     return InitResponse(
         metadata=metadata,
-        samples=list(metadata.samples.values()),
+        samples=[],
         warnings=warnings,
     )
 
@@ -113,8 +129,8 @@ async def get_metadata() -> ProjectMetadata:
     return metadata_service().load()
 
 
-@app.post("/api/metadata/update", response_model=ProjectMetadata)
-async def update_metadata(request: MetadataUpdateRequest) -> ProjectMetadata:
+@app.post("/api/metadata/update", response_model=SampleMetadata)
+async def update_metadata(request: MetadataUpdateRequest) -> SampleMetadata:
     return metadata_service().update_sample(
         request.patch,
         sample_id=request.sample_id,

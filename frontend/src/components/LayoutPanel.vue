@@ -3,7 +3,7 @@ import { computed, inject, ref } from "vue";
 
 import { FILTERS_KEY, SELECTION_KEY, WORKSPACE_KEY } from "../keys";
 import type { LayoutType, SampleMetadata } from "../types";
-import { defaultBoundariesForLayout, withAutoLabeledStatus } from "../composables/useWorkspace";
+import { defaultBoundariesForLayout } from "../composables/useWorkspace";
 
 const workspace = inject(WORKSPACE_KEY)!;
 const filters = inject(FILTERS_KEY)!;
@@ -35,7 +35,7 @@ function layoutAssignmentState(layoutType: LayoutType): "checked" | "mixed" | "u
 }
 
 function layoutSampleCount(layoutType: LayoutType): number {
-  return workspace.samples.filter((s) => s.layout_type === layoutType).length;
+  return workspace.layoutCounts.get(layoutType) ?? 0;
 }
 
 async function assignLayoutToTargets(layoutType: LayoutType): Promise<void> {

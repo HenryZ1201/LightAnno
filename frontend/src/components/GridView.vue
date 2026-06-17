@@ -69,6 +69,8 @@ const renderedSamples = computed(() => {
   return props.visibleSamples.slice(startIndex, endIndex);
 });
 
+const selectedSampleIdSet = computed(() => new Set(selection.selectedSampleIds));
+
 // Calculate offset for rendered items
 const renderOffset = computed(() => {
   const { columns, rowHeight } = gridDimensions.value;
@@ -235,7 +237,7 @@ const rubberBandStyle = computed(() => {
           :key="sample.sample_id"
           :sample="sample"
           :selected="sample.sample_id === selection.selectedSampleId"
-          :multi-selected="selection.selectedSampleIds.includes(sample.sample_id)"
+          :multi-selected="selectedSampleIdSet.has(sample.sample_id)"
           @select="({ sample: s, event: e }) => {
             const realIndex = renderOffset.startIndex + index;
             selection.handleSampleClick(s, e, realIndex, visibleSamples);

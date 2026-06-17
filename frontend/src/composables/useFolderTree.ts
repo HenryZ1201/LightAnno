@@ -9,11 +9,13 @@ interface FolderNode {
   children: Map<string, FolderNode>;
 }
 
-export function flattenFolders(
-  samples: SampleMetadata[],
-  collapsedPaths: string[],
-): FlatFolder[] {
-  const collapsedSet = new Set(collapsedPaths);
+const folderIndexCache = new WeakMap<SampleMetadata[], FolderNode>();
+const folderSampleIdsCache = new WeakMap<SampleMetadata[], Map<string, string[]>>();
+
+function buildFolderIndex(samples: SampleMetadata[]): FolderNode {
+  const cached = folderIndexCache.get(samples);
+  if (cached) return cached;
+
   const root: FolderNode = {
     name: "",
     path: "",
@@ -56,6 +58,16 @@ export function flattenFolders(
     return total;
   }
   computeTotals(root);
+  folderIndexCache.set(samples, root);
+  return root;
+}
+
+export function flattenFolders(
+  samples: SampleMetadata[],
+  collapsedPaths: string[],
+): FlatFolder[] {
+  const collapsedSet = new Set(collapsedPaths);
+  const root = buildFolderIndex(samples);
 
   const result: FlatFolder[] = [];
 
@@ -99,9 +111,17 @@ export function getFolderSampleIds(
   samples: SampleMetadata[],
   folderPath: string,
 ): string[] {
-  return samples
-    .filter(
-      (s) => s.sample_path === folderPath || s.sample_path.startsWith(`${folderPath}/`),
-    )
+  let perSampleCache = folderSampleIdsCache.get(samples);
+  if (!perSampleCache) {
+    perSampleCache = new Map();
+    folderSampleIdsCache.set(samples, perSampleCache);
+  }
+  const cached = perSampleCache.get(folderPath);
+  if (cached) return cached;
+
+  const ids = samples
+    .filter((s) => s.sample_path === folderPath || s.sample_path.startsWith(`${folderPath}/`))
     .map((s) => s.sample_id);
+  perSampleCache.set(folderPath, ids);
+  return ids;
 }

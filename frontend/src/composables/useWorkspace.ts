@@ -9,6 +9,7 @@ import {
   exportUrl,
   fetchHealth,
   importFolder,
+  importFolderWithProgress,
   initializeWorkspace,
   listCatalogs,
   moveFolder,
@@ -19,6 +20,7 @@ import {
   updateTag,
   upsertTag,
   type HealthResponse,
+  type ImportProgress,
 } from "../api";
 import type {
   CatalogSummary,
@@ -88,7 +90,47 @@ export function useWorkspace() {
   const catalogs = ref<CatalogSummary[]>([]);
   const activeCatalogId = ref<string | null>(null);
 
+  // Import progress state
+  const importProgress = ref<ImportProgress | null>(null);
+  const importProgressPercent = computed(() => {
+    if (!importProgress.value || importProgress.value.type !== "progress") return 0;
+    const { current = 0, total = 1 } = importProgress.value;
+    return Math.round((current / total) * 100);
+  });
+
   const samples = computed(() => Object.values(metadata.value?.samples ?? {}));
+  const sampleStats = computed(() => {
+    let labeled = 0;
+    let flagged = 0;
+    for (const sample of samples.value) {
+      if (sample.class_status === "labeled") labeled += 1;
+      if (sample.flagged) flagged += 1;
+    }
+    return { total: samples.value.length, labeled, flagged };
+  });
+  const layoutCounts = computed(() => {
+    const counts = new Map<LayoutType, number>();
+    for (const sample of samples.value) {
+      counts.set(sample.layout_type, (counts.get(sample.layout_type) ?? 0) + 1);
+    }
+    return counts;
+  });
+  const keywordCounts = computed(() => {
+    const counts = new Map<string, number>();
+    for (const sample of samples.value) {
+      const counted = new Set<string>();
+      for (const tag of sample.tags) {
+        const parts = tag.split("/");
+        let path = "";
+        for (const part of parts) {
+          path = path ? `${path}/${part}` : part;
+          counted.add(path);
+        }
+      }
+      counted.forEach((path) => counts.set(path, (counts.get(path) ?? 0) + 1));
+    }
+    return counts;
+  });
   const activeCatalog = computed(
     () => catalogs.value.find((c) => c.catalog_id === activeCatalogId.value) ?? null,
   );
@@ -182,27 +224,29 @@ export function useWorkspace() {
   async function importFolderAction(folderPath: string): Promise<void> {
     if (!activeCatalogId.value || !folderPath.trim()) return;
     loading.value = true;
+    importProgress.value = null;
     try {
-      const response = await importFolder(activeCatalogId.value, folderPath.trim());
+      const response = await importFolderWithProgress(
+        activeCatalogId.value,
+        folderPath.trim(),
+        (progress) => {
+          importProgress.value = progress;
+        }
+      );
       applyWorkspaceResponse(response);
       await refreshCatalogs();
-      feedbackMessage.value = `导入完成：${response.samples.length} 个 sample，${response.warnings.length} 个 warning`;
+      feedbackMessage.value = `导入完成：${Object.keys(response.metadata.samples).length} 个 sample，${response.warnings.length} 个 warning`;
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : "导入文件夹失败";
     } finally {
       loading.value = false;
+      importProgress.value = null;
     }
   }
 
   function applySamplePatchLocally(sampleId: string, patch: Partial<SampleMetadata>): void {
     if (!metadata.value || !metadata.value.samples[sampleId]) return;
-    metadata.value = {
-      ...metadata.value,
-      samples: {
-        ...metadata.value.samples,
-        [sampleId]: { ...metadata.value.samples[sampleId], ...patch },
-      },
-    };
+    Object.assign(metadata.value.samples[sampleId], patch);
   }
 
   async function patchSample(
@@ -217,7 +261,8 @@ export function useWorkspace() {
     };
     try {
       applySamplePatchLocally(sample.sample_id, nextPatch);
-      metadata.value = await updateSampleMetadata(sample, nextPatch);
+      const updatedSample = await updateSampleMetadata(sample, nextPatch);
+      applySamplePatchLocally(sample.sample_id, updatedSample);
     } catch (error) {
       applySamplePatchLocally(sample.sample_id, previousSample);
       errorMessage.value = error instanceof Error ? error.message : "保存失败";
@@ -257,7 +302,8 @@ export function useWorkspace() {
     try {
       const patch = sample ? withAutoLabeledStatus(sample, { tags }) : { tags };
       if (sample) applySamplePatchLocally(sample.sample_id, patch);
-      metadata.value = await updateSampleMetadata({ sample_id: sampleId }, patch);
+      const updatedSample = await updateSampleMetadata({ sample_id: sampleId }, patch);
+      applySamplePatchLocally(sampleId, updatedSample);
       feedbackMessage.value = "标签已保存";
     } catch (error) {
       if (previousSample) applySamplePatchLocally(previousSample.sample_id, previousSample);
@@ -324,6 +370,13 @@ export function useWorkspace() {
     patch: MetadataPatch,
   ): Promise<void> {
     if (!sampleIds.length) return;
+    if (sampleIds.length === 1) {
+      const sample = metadata.value?.samples[sampleIds[0]];
+      if (sample) {
+        await patchSample(sample, patch);
+      }
+      return;
+    }
     loading.value = true;
     try {
       const response = await batchUpdateSamples(sampleIds, patch);
@@ -343,6 +396,17 @@ export function useWorkspace() {
     action: "add" | "remove",
   ): Promise<void> {
     if (!sampleIds.length) return;
+    if (sampleIds.length === 1) {
+      const sample = metadata.value?.samples[sampleIds[0]];
+      if (sample) {
+        const tags =
+          action === "add"
+            ? Array.from(new Set([...sample.tags, tagPath])).sort()
+            : sample.tags.filter((tag) => tag !== tagPath);
+        await patchSample(sample, { tags });
+      }
+      return;
+    }
     loading.value = true;
     try {
       const response = await batchTag(sampleIds, tagPath, action);
@@ -409,7 +473,12 @@ export function useWorkspace() {
     catalogs,
     activeCatalogId,
     samples,
+    sampleStats,
+    layoutCounts,
+    keywordCounts,
     activeCatalog,
+    importProgress,
+    importProgressPercent,
     initHealth,
     loadWorkspace,
     refreshCatalogs,

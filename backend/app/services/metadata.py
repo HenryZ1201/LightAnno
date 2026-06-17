@@ -38,15 +38,23 @@ class MetadataService:
         self.metadata_path = workspace_root / metadata_filename
         self.backup_path = workspace_root / f"{self.metadata_path.stem}.backup.json"
         self.exports_root = workspace_root / "exports"
+        self._metadata_cache: ProjectMetadata | None = None
+        self._metadata_cache_mtime_ns: int | None = None
+        self._session_backup_created = False
 
     def load(self) -> ProjectMetadata:
         if not self.metadata_path.exists():
             return ProjectMetadata()
 
         try:
+            mtime_ns = self.metadata_path.stat().st_mtime_ns
+            if self._metadata_cache is not None and self._metadata_cache_mtime_ns == mtime_ns:
+                return self._metadata_cache
             data = json.loads(self.metadata_path.read_text(encoding="utf-8"))
             metadata = ProjectMetadata.model_validate(data)
             self._sync_class_status_with_tags(metadata)
+            self._metadata_cache = metadata
+            self._metadata_cache_mtime_ns = mtime_ns
             return metadata
         except (json.JSONDecodeError, ValidationError) as error:
             raise HTTPException(status_code=500, detail=f"Invalid metadata.json: {error}") from error
@@ -55,13 +63,16 @@ class MetadataService:
         self._sync_class_status_with_tags(metadata)
         self.workspace_root.mkdir(parents=True, exist_ok=True)
 
-        if self.metadata_path.exists():
+        if self.metadata_path.exists() and not self._session_backup_created:
             shutil.copy2(self.metadata_path, self.backup_path)
+            self._session_backup_created = True
 
         tmp_path = self.metadata_path.with_suffix(".json.tmp")
         payload = metadata.model_dump(mode="json")
         tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp_path, self.metadata_path)
+        self._metadata_cache = metadata
+        self._metadata_cache_mtime_ns = self.metadata_path.stat().st_mtime_ns
 
     def _sync_class_status_with_tags(self, metadata: ProjectMetadata) -> None:
         for sample in metadata.samples.values():
@@ -69,6 +80,34 @@ class MetadataService:
                 sample.class_status = "labeled"
             elif not sample.tags and sample.class_status == "labeled":
                 sample.class_status = "unlabeled"
+
+    def initialize_workspace_with_progress(self):
+        """Initialize workspace and yield progress updates."""
+        from app.services.scanner import scan_dataset_with_progress
+
+        existing = self.load()
+
+        # Use the generator to get progress updates and final results
+        generator = scan_dataset_with_progress(self.dataset_root)
+
+        while True:
+            try:
+                progress = next(generator)
+                yield progress
+            except StopIteration as e:
+                scanned_samples, warnings = e.value
+                break
+
+        merged = self._merge_scanned_samples(existing, scanned_samples)
+        merged.dataset_root = str(self.dataset_root)
+        self.save(merged)
+
+        yield {
+            "type": "complete",
+            "samples": [],
+            "warnings": warnings,
+            "metadata": merged,
+        }
 
     def initialize_workspace(self) -> tuple[ProjectMetadata, list[SampleWarning]]:
         existing = self.load()
@@ -83,7 +122,7 @@ class MetadataService:
         patch: MetadataPatch,
         sample_id: str | None = None,
         sample_path: str | None = None,
-    ) -> ProjectMetadata:
+    ) -> SampleMetadata:
         metadata = self.load()
         target_id = self.find_sample_id(metadata, sample_id=sample_id, sample_path=sample_path)
         try:
@@ -91,7 +130,7 @@ class MetadataService:
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         self.save(metadata)
-        return metadata
+        return metadata.samples[target_id]
 
     def batch_update(self, request: BatchMetadataRequest) -> BatchMetadataResponse:
         metadata = self.load()

@@ -23,27 +23,31 @@ export function useFilters() {
 
   function visibleSamples(samples: SampleMetadata[]): SampleMetadata[] {
     const search = searchText.value.trim().toLowerCase();
+    const archive = archiveFilter.value;
+    const status = statusFilter.value;
+    const flagged = flaggedFilter.value;
+    const cue = cueFilter.value;
+    const layouts = selectedLayouts.value.length ? new Set(selectedLayouts.value) : null;
+    const folders = selectedFolders.value;
+    const tags = selectedTags.value;
 
     return samples.filter((sample) => {
-      if (archiveFilter.value === "active" && (sample.archived || sample.trashed)) return false;
-      if (archiveFilter.value === "archived" && !sample.archived) return false;
-      if (archiveFilter.value === "trashed" && !sample.trashed) return false;
-      if (statusFilter.value && sample.class_status !== statusFilter.value) return false;
-      if (flaggedFilter.value === "flagged" && !sample.flagged) return false;
-      if (flaggedFilter.value === "not_flagged" && sample.flagged) return false;
-      if (selectedLayouts.value.length && !selectedLayouts.value.includes(sample.layout_type)) {
-        return false;
-      }
-      if (selectedFolders.value.length) {
-        const inFolder = selectedFolders.value.some(
-          (folder) => sample.sample_path === folder || sample.sample_path.startsWith(`${folder}/`),
-        );
+      if (archive === "active" && (sample.archived || sample.trashed)) return false;
+      if (archive === "archived" && !sample.archived) return false;
+      if (archive === "trashed" && !sample.trashed) return false;
+      if (status && sample.class_status !== status) return false;
+      if (flagged === "flagged" && !sample.flagged) return false;
+      if (flagged === "not_flagged" && sample.flagged) return false;
+      if (layouts && !layouts.has(sample.layout_type)) return false;
+      if (folders.length) {
+        const samplePath = sample.sample_path;
+        const inFolder = folders.some((folder) => samplePath === folder || samplePath.startsWith(`${folder}/`));
         if (!inFolder) return false;
       }
-      if (cueFilter.value === "missing" && sample.text_info) return false;
-      if (cueFilter.value === "present" && !sample.text_info) return false;
-      if (selectedTags.value.length) {
-        const hasAllSelectedTags = selectedTags.value.every((selectedTag) =>
+      if (cue === "missing" && sample.text_info) return false;
+      if (cue === "present" && !sample.text_info) return false;
+      if (tags.length) {
+        const hasAllSelectedTags = tags.every((selectedTag) =>
           sample.tags.some(
             (tag) => tag === selectedTag || tag.startsWith(`${selectedTag}/`),
           ),

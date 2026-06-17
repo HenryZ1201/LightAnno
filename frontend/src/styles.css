@@ -743,6 +743,30 @@ input[type="color"] {
   margin-bottom: 8px;
 }
 
+.folder-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.folder-list-virtual {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.folder-list-spacer {
+  position: relative;
+}
+
+.folder-list-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
 .folder-row {
   display: grid;
   grid-template-columns: 32px 20px minmax(0, 1fr) auto;
@@ -1259,13 +1283,27 @@ input[type="color"] {
 }
 
 .filmstrip {
-  display: flex;
-  gap: 8px;
+  position: relative;
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 10px 12px;
   padding-top: 16px;
+}
+
+.filmstrip-virtual {
+  position: relative;
+  height: 100%;
+}
+
+.filmstrip-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 8px;
+  height: 100%;
+  will-change: transform;
 }
 
 .filmstrip-frame {

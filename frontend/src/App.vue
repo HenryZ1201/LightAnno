@@ -13,6 +13,7 @@ import DetailView from "./components/DetailView.vue";
 import Filmstrip from "./components/Filmstrip.vue";
 import FolderPanel from "./components/FolderPanel.vue";
 import GridView from "./components/GridView.vue";
+import ImportProgress from "./components/ImportProgress.vue";
 import MenuBar from "./components/MenuBar.vue";
 import StatsBar from "./components/StatsBar.vue";
 import ToastNotification from "./components/ToastNotification.vue";
@@ -29,6 +30,8 @@ provide(FILTERS_KEY, filters);
 
 const catalogPanelOpen = ref(false);
 const catalogPanelMode = ref<"open" | "new" | "import">("open");
+const searchDraft = ref("");
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Panel resize state
 const leftPanelWidth = ref(260);
@@ -113,6 +116,18 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("mousemove", handleMouseMove);
   window.removeEventListener("mouseup", handleMouseUp);
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+  }
+});
+
+watch(searchDraft, (value) => {
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+  }
+  searchTimer = setTimeout(() => {
+    filters.searchText = value;
+  }, 180);
 });
 
 const selectedSample = computed<SampleMetadata | null>(() => {
@@ -126,10 +141,10 @@ const visibleSamples = computed(() =>
 );
 
 const stats = computed(() => ({
-  total: workspace.samples.length,
+  total: workspace.sampleStats.total,
   visible: visibleSamples.value.length,
-  labeled: workspace.samples.filter((s: SampleMetadata) => s.class_status === "labeled").length,
-  flagged: workspace.samples.filter((s: SampleMetadata) => s.flagged).length,
+  labeled: workspace.sampleStats.labeled,
+  flagged: workspace.sampleStats.flagged,
   warnings: workspace.warnings.length,
 }));
 
@@ -174,6 +189,7 @@ function handleClearSelection(): void {
 }
 
 function handleSearchPath(path: string): void {
+  searchDraft.value = path;
   filters.searchText = path;
 }
 
@@ -215,7 +231,7 @@ function handleLayoutQuickFilter(event: Event): void {
         </div>
         <div class="topbar-filters">
           <input
-            v-model="filters.searchText"
+            v-model="searchDraft"
             type="search"
             placeholder="搜索 sample 路径、图片路径或控件树文件..."
             class="header-search"
@@ -306,5 +322,7 @@ function handleLayoutQuickFilter(event: Event): void {
       type="success"
       @dismiss="handleToastDismiss"
     />
+
+    <ImportProgress />
   </main>
 </template>

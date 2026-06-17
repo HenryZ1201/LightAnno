@@ -19,6 +19,7 @@ class CatalogService:
         self.workspace_root = workspace_root
         self.catalogs_root = workspace_root / "catalogs"
         self.index_path = self.catalogs_root / "catalogs.json"
+        self._service_cache: dict[tuple[str, str], MetadataService] = {}
 
     def list_catalogs(self) -> CatalogIndex:
         index = self._load_index()
@@ -125,6 +126,36 @@ class CatalogService:
         self._save_index(index)
         return metadata, warnings
 
+    def import_folder_with_progress(self, catalog_id: str, folder_path: str):
+        """Import folder and yield progress updates."""
+        index = self._load_index()
+        summary = index.catalogs.get(catalog_id)
+        if summary is None:
+            raise HTTPException(status_code=404, detail="Catalog not found")
+
+        folder = self._resolve_import_path(folder_path)
+        service = self._service(catalog_id, folder)
+
+        # Get progress updates from the generator
+        for update in service.initialize_workspace_with_progress():
+            if update["type"] == "progress":
+                yield update
+            elif update["type"] == "complete":
+                metadata = update["metadata"]
+                warnings = update["warnings"]
+
+                metadata.dataset_root = str(folder)
+                service.save(metadata)
+
+                summary.dataset_root = str(folder)
+                summary.sample_count = len(metadata.samples)
+                summary.updated_at = datetime.now(timezone.utc).isoformat()
+                index.catalogs[catalog_id] = summary
+                index.active_catalog_id = catalog_id
+                self._save_index(index)
+
+                yield update
+
     def active_service(self) -> MetadataService:
         index = self._load_index()
         if index.active_catalog_id is None:
@@ -206,11 +237,18 @@ class CatalogService:
         index.active_catalog_id = catalog_id
 
     def _service(self, catalog_id: str, dataset_root: Path) -> MetadataService:
-        return MetadataService(
+        key = (catalog_id, str(dataset_root.resolve()))
+        cached = self._service_cache.get(key)
+        if cached is not None:
+            return cached
+
+        service = MetadataService(
             dataset_root=dataset_root,
             workspace_root=self._catalog_dir(catalog_id),
             metadata_filename=f"{catalog_id}.json",
         )
+        self._service_cache[key] = service
+        return service
 
     def _catalog_dir(self, catalog_id: str) -> Path:
         return self.catalogs_root / catalog_id
