@@ -54,6 +54,19 @@ docker compose down
 
 ## 本地开发
 
+根据你的环境选择合适的部署场景：
+
+| 场景 | 前端位置 | 后端位置 | 适用情况 |
+|------|---------|---------|---------|
+| 场景一 | 本地 Windows | 本地 Windows | 开发调试，数据集较小 |
+| 场景二 | 本地 Windows | 远程 Linux | 数据集在服务器，本地有浏览器 |
+| 场景三 | 远程 Linux | 远程 Linux | 远程开发，通过 VSCode 访问（推荐） |
+
+**推荐场景：**
+- 数据集较大或在远程服务器上 → **场景三**（VSCode 远程开发）
+- 快速开发调试 → **场景一**（全本地）
+- 需要本地浏览器调试 → **场景二**（混合部署）
+
 ### 场景一：前后端都在 Windows 本地运行
 
 **后端启动：**
@@ -80,6 +93,8 @@ npm run dev
 
 ### 场景二：前端在 Windows，后端在远程 Linux 服务器
 
+适用于数据集和计算资源在远程服务器，但希望在本地使用浏览器的场景。
+
 **远程服务器（Linux）启动后端：**
 
 ```bash
@@ -90,11 +105,11 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-确保服务器防火墙允许 8000 端口访问。
+确保服务器防火墙允许 8000 端口访问（或通过 SSH 隧道访问）。
 
 **本地 Windows 启动前端：**
 
-复制 `.env.example` 为 `.env`（如果需要连接远程后端）：
+复制 `.env.example` 为 `.env`：
 
 ```powershell
 copy .env.example .env
@@ -112,6 +127,12 @@ VITE_API_BASE_URL=http://your-server-ip:8000
 VITE_API_BASE_URL=http://192.168.1.100:8000
 ```
 
+如果通过 SSH 隧道访问，使用 localhost：
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
 然后启动前端：
 
 ```powershell
@@ -127,6 +148,130 @@ npm run dev
 - 远程服务器的 `catalogs/` 和 `data/` 目录需要正确配置
 - 如果后端需要访问远程服务器上的数据集，确保路径正确
 - 生产环境建议使用 HTTPS 和反向代理（如 Nginx）
+
+### 场景三：前后端都在远程 Linux 服务器运行（通过 VSCode 远程开发）
+
+适用于远程 Linux 服务器没有图形界面和浏览器的场景。通过 VSCode Remote-SSH 连接服务器，利用 VSCode 的端口转发功能在本地浏览器访问。
+
+**前提条件：**
+
+- 本地安装 VSCode
+- 安装 VSCode 扩展：Remote - SSH
+- 远程 Linux 服务器可通过 SSH 访问
+
+**步骤 1：VSCode 连接远程服务器**
+
+1. 在 VSCode 中按 `F1` 或 `Ctrl+Shift+P`，输入 `Remote-SSH: Connect to Host`
+2. 输入 SSH 连接信息：`ssh user@your-server-ip`
+3. 连接成功后，VSCode 会在远程服务器上打开工作区
+
+**步骤 2：在远程服务器上启动后端**
+
+在 VSCode 的远程终端中运行：
+
+```bash
+cd /path/to/LightAnno/backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+VSCode 会自动转发 8000 端口到本地。
+
+**步骤 3：在远程服务器上启动前端**
+
+打开新的远程终端（VSCode 中按 `Ctrl+Shift+` 或点击终端面板的 + 号）：
+
+```bash
+cd /path/to/LightAnno/frontend
+npm install
+npm run dev -- --host 0.0.0.0
+```
+
+VSCode 会自动转发 5173 端口到本地。
+
+**步骤 4：在本地浏览器访问**
+
+直接在本地浏览器打开：
+
+- 前端：`http://localhost:5173`
+- 后端 API：`http://localhost:8000/api/health`
+
+VSCode 会自动处理端口转发，无需手动配置 `.env` 文件。
+
+**使用 VSCode Simple Browser（可选）：**
+
+VSCode 内置 Simple Browser 扩展，可以直接在 VSCode 中打开网页：
+
+1. 安装扩展：在 VSCode 扩展市场搜索 "Simple Browser"（通常已内置）
+2. 按 `F1`，输入 `Simple Browser: Show`
+3. 输入 `http://localhost:5173`
+4. 网页会在 VSCode 标签页中打开
+
+注意：Simple Browser 功能有限，推荐使用本地浏览器获得完整体验。
+
+**验证端口转发：**
+
+如果自动转发未生效，可以手动配置：
+
+1. 在 VSCode 底部状态栏找到 "端口" 面板
+2. 点击 "转发端口"
+3. 添加端口 5173 和 8000
+
+**备选方案：SSH 端口转发（不使用 VSCode）**
+
+如果不用 VSCode，可以通过 SSH 隧道手动转发端口：
+
+```bash
+# 在本地终端运行（替换为你的服务器信息）
+ssh -L 5173:localhost:5173 -L 8000:localhost:8000 user@your-server-ip
+```
+
+然后在远程服务器上启动前后端服务，本地浏览器访问 `http://localhost:5173`。
+
+**生产环境部署（Nginx 反向代理）**
+
+如果需要长期部署，建议使用 Nginx：
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # 前端静态文件
+    location / {
+        root /path/to/LightAnno/frontend/dist;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端 API 代理
+    location /api {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # 图片文件代理
+    location /images {
+        proxy_pass http://localhost:8000;
+    }
+}
+```
+
+前端构建命令：
+
+```bash
+cd frontend
+npm run build
+```
+
+**注意事项：**
+
+- 远程服务器需要有足够的磁盘空间存储数据集和 catalogs
+- 确保防火墙允许 SSH 端口（默认 22）访问
+- 生产环境建议配置 HTTPS（使用 Let's Encrypt）
+- 数据集路径在远程服务器上必须是绝对路径或正确的相对路径
 
 ## Metadata 文件
 
