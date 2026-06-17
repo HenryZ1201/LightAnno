@@ -2,6 +2,7 @@ import { computed, reactive, ref } from "vue";
 
 import {
   backupMetadata,
+  batchTag,
   batchUpdateSamples,
   createCatalog,
   deleteTag,
@@ -10,6 +11,7 @@ import {
   importFolder,
   initializeWorkspace,
   listCatalogs,
+  moveFolder,
   openCatalog,
   openCatalogPath,
   renameTagPath,
@@ -335,6 +337,42 @@ export function useWorkspace() {
     }
   }
 
+  async function batchTagSamples(
+    sampleIds: string[],
+    tagPath: string,
+    action: "add" | "remove",
+  ): Promise<void> {
+    if (!sampleIds.length) return;
+    loading.value = true;
+    try {
+      const response = await batchTag(sampleIds, tagPath, action);
+      metadata.value = response.metadata;
+      const okCount = response.results.filter((r) => r.ok).length;
+      feedbackMessage.value = `批量${action === "add" ? "添加" : "删除"}标签：${okCount}/${sampleIds.length} 成功`;
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : "批量标签操作失败";
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function moveFolderAction(
+    sourceFolder: string,
+    targetFolder: string,
+  ): Promise<void> {
+    if (!sourceFolder.trim() || !targetFolder.trim()) return;
+    loading.value = true;
+    try {
+      const response = await moveFolder(sourceFolder.trim(), targetFolder.trim());
+      applyWorkspaceResponse({ metadata: response, samples: [], warnings: [] });
+      feedbackMessage.value = `文件夹已从 "${sourceFolder}" 移动到 "${targetFolder}"`;
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : "移动文件夹失败";
+    } finally {
+      loading.value = false;
+    }
+  }
+
   async function createBackup(): Promise<void> {
     try {
       const response = await backupMetadata();
@@ -389,6 +427,8 @@ export function useWorkspace() {
     editTag,
     removeTag,
     batchPatchSamples,
+    batchTagSamples,
+    moveFolderAction,
     createBackup,
     saveMetadataNow,
     exportAllMetadata,

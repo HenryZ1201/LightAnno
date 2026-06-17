@@ -14,6 +14,19 @@ export function useKeyboard(
     const target = event.target as HTMLElement | null;
     if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
 
+    // Select all: Cmd/Ctrl + A
+    if ((event.metaKey || event.ctrlKey) && event.key === "a") {
+      event.preventDefault();
+      selection.selectAllVisible(getVisibleSamples());
+      return;
+    }
+
+    // Clear selection: Escape
+    if (event.key === "Escape") {
+      selection.clearSelection();
+      return;
+    }
+
     if (event.key === "g" || event.key === "G") {
       selection.activeView = "grid";
       return;

@@ -41,12 +41,11 @@ function layoutSampleCount(layoutType: LayoutType): number {
 async function assignLayoutToTargets(layoutType: LayoutType): Promise<void> {
   const targets = [...layoutTargetSamples.value];
   if (!targets.length) return;
-  for (const sample of targets) {
-    await workspace.patchSample(sample, {
-      layout_type: layoutType,
-      boundaries: defaultBoundariesForLayout(layoutType),
-    });
-  }
+  const sampleIds = targets.map((s) => s.sample_id);
+  await workspace.batchPatchSamples(sampleIds, {
+    layout_type: layoutType,
+    boundaries: defaultBoundariesForLayout(layoutType),
+  });
 }
 
 function layoutLabel(layoutType: LayoutType): string {

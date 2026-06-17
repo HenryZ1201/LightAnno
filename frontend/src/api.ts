@@ -95,6 +95,34 @@ export async function batchUpdateSamples(
   });
 }
 
+export async function batchTag(
+  sampleIds: string[],
+  tagPath: string,
+  action: "add" | "remove",
+): Promise<BatchMetadataResponse> {
+  return requestJson<BatchMetadataResponse>("/api/samples/batch-tag", {
+    method: "POST",
+    body: JSON.stringify({
+      sample_ids: sampleIds,
+      tag_path: tagPath,
+      action,
+    }),
+  });
+}
+
+export async function moveFolder(
+  sourceFolder: string,
+  targetFolder: string,
+): Promise<ProjectMetadata> {
+  return requestJson<ProjectMetadata>("/api/samples/move-folder", {
+    method: "POST",
+    body: JSON.stringify({
+      source_folder: sourceFolder,
+      target_folder: targetFolder,
+    }),
+  });
+}
+
 export async function upsertTag(
   tagPath: string,
   label: string,

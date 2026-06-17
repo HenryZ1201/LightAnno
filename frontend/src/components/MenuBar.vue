@@ -215,6 +215,13 @@ onUnmounted(() => {
           <button type="button" @click="filterByLayout('dual')">双栏</button>
           <button type="button" @click="filterByLayout('triple')">三栏</button>
         </div>
+        <hr class="menu-divider" />
+        <button
+          type="button"
+          @click="filters.autoSnap = !filters.autoSnap"
+        >
+          {{ filters.autoSnap ? "✓ " : "" }}自动吸附边界
+        </button>
       </div>
     </div>
 

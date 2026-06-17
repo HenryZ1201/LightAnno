@@ -19,6 +19,7 @@ export function useFilters() {
   const archiveFilter = ref<"active" | "archived" | "trashed" | "all">("active");
   const searchText = ref("");
   const gridMinSize = ref(188);
+  const autoSnap = ref(true);
 
   function visibleSamples(samples: SampleMetadata[]): SampleMetadata[] {
     const search = searchText.value.trim().toLowerCase();
@@ -157,6 +158,7 @@ export function useFilters() {
     archiveFilter,
     searchText,
     gridMinSize,
+    autoSnap,
     visibleSamples,
     toggleTag,
     toggleTagCollapse,

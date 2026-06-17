@@ -130,6 +130,12 @@ class BatchMetadataRequest(BaseModel):
         return self
 
 
+class BatchTagRequest(BaseModel):
+    sample_ids: list[str]
+    tag_path: str
+    action: Literal["add", "remove"]
+
+
 class OperationResult(BaseModel):
     sample_id: str | None = None
     sample_path: str | None = None
@@ -147,11 +153,10 @@ class MoveRequest(BaseModel):
     sample_path: str | None = None
     target: MoveTarget
 
-    @model_validator(mode="after")
-    def require_identifier(self) -> "MoveRequest":
-        if not self.sample_id and not self.sample_path:
-            raise ValueError("sample_id or sample_path is required")
-        return self
+
+class MoveFolderRequest(BaseModel):
+    source_folder: str
+    target_folder: str
 
 
 class BackupResponse(BaseModel):

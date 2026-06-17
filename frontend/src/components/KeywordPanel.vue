@@ -3,7 +3,6 @@ import { computed, inject, ref } from "vue";
 
 import { FILTERS_KEY, SELECTION_KEY, WORKSPACE_KEY } from "../keys";
 import type { ContextMenuItem, FlatTag, SampleMetadata } from "../types";
-import { withAutoLabeledStatus } from "../composables/useWorkspace";
 import ContextMenu from "./ContextMenu.vue";
 import TagTreeItem from "./TagTreeItem.vue";
 
@@ -77,12 +76,9 @@ async function toggleKeywordAssignment(path: string): Promise<void> {
   const targets = [...keywordTargetSamples.value];
   if (!targets.length) return;
   const shouldRemove = targets.every((s) => s.tags.includes(path));
-  for (const sample of targets) {
-    const nextTags = shouldRemove
-      ? sample.tags.filter((t) => t !== path)
-      : Array.from(new Set([...sample.tags, path]));
-    await workspace.patchSample(sample, withAutoLabeledStatus(sample, { tags: nextTags }));
-  }
+  const action = shouldRemove ? "remove" : "add";
+  const sampleIds = targets.map((s) => s.sample_id);
+  await workspace.batchTagSamples(sampleIds, path, action);
 }
 
 async function createOrUpdateTag(): Promise<void> {

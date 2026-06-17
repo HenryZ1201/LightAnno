@@ -55,8 +55,23 @@ function handleFolderContextMenu(folder: FlatFolder, event: MouseEvent): void {
         disabled: !sampleIds.length,
       },
       {
-        label: "移动文件夹（暂不支持）",
-        disabled: true,
+        label: `移动文件夹 (${sampleIds.length} 个样本)`,
+        action: () => {
+          if (!sampleIds.length) return;
+          const targetFolder = window.prompt(
+            `将 "${folder.path}" 移动到：\n（输入目标路径，如 "new_folder/sub_folder"）`,
+            "",
+          );
+          if (targetFolder && targetFolder.trim()) {
+            const confirmed = window.confirm(
+              `确定将 "${folder.path}" 下的 ${sampleIds.length} 个样本移动到 "${targetFolder.trim()}" 吗？\n\n注意：这会改变样本的路径和 ID。`,
+            );
+            if (confirmed) {
+              workspace.moveFolderAction(folder.path, targetFolder.trim());
+            }
+          }
+        },
+        disabled: !sampleIds.length,
       },
     ],
   };

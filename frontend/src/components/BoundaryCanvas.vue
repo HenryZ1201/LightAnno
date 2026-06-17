@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
+import { FILTERS_KEY } from "../keys";
 import type { LayoutType } from "../types";
+
+const filters = inject(FILTERS_KEY)!;
 
 const props = defineProps<{
   imageSrc: string;
@@ -291,6 +294,7 @@ function nearestBoundaryIndex(event: PointerEvent): number | null {
 }
 
 function snap(value: number): number {
+  if (!filters.autoSnap) return value;
   const target = SNAP_POINTS.find((point) => Math.abs(value - point) <= SNAP_TOLERANCE);
   return target ?? value;
 }
@@ -322,7 +326,7 @@ function round4(value: number): number {
     </div>
     <div v-else-if="layoutType === 'unlabeled'" class="canvas-hint">请选择双栏或三栏后拖动竖线标注边界</div>
     <div v-else-if="layoutType === 'single'" class="canvas-hint">单栏模式，无需边界线</div>
-    <div v-else class="canvas-hint">拖动橙色竖线调整边界，靠近 1/3、1/2、2/3 会自动吸附</div>
+    <div v-else class="canvas-hint">拖动橙色竖线调整边界{{ filters.autoSnap ? "，靠近 1/3、1/2、2/3 会自动吸附" : "（自动吸附已关闭）" }}</div>
     <div
       v-if="tooltip"
       class="boundary-tooltip"

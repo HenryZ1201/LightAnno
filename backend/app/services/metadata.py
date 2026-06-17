@@ -127,6 +127,64 @@ class MetadataService:
         self.save(metadata)
         return BatchMetadataResponse(results=results, metadata=metadata)
 
+    def batch_tag(
+        self,
+        sample_ids: list[str],
+        tag_path: str,
+        action: str,
+    ) -> BatchMetadataResponse:
+        """批量添加或删除标签"""
+        metadata = self.load()
+        results: list[OperationResult] = []
+
+        for sample_id in sample_ids:
+            sample = metadata.samples.get(sample_id)
+            if sample is None:
+                results.append(OperationResult(sample_id=sample_id, ok=False, message="Sample not found"))
+                continue
+
+            try:
+                if action == "add":
+                    if tag_path not in sample.tags:
+                        sample.tags.append(tag_path)
+                        sample.tags.sort()
+                elif action == "remove":
+                    if tag_path in sample.tags:
+                        sample.tags.remove(tag_path)
+
+                # 自动更新类别状态
+                self._sync_class_status_with_tags_for_sample(sample)
+                sample.time_updated = metadata_timestamp()
+                metadata.samples[sample_id] = sample
+
+                results.append(
+                    OperationResult(
+                        sample_id=sample_id,
+                        sample_path=sample.sample_path,
+                        ok=True,
+                        message="Updated",
+                    )
+                )
+            except Exception as error:
+                results.append(
+                    OperationResult(
+                        sample_id=sample_id,
+                        sample_path=sample.sample_path,
+                        ok=False,
+                        message=str(error),
+                    )
+                )
+
+        self.save(metadata)
+        return BatchMetadataResponse(results=results, metadata=metadata)
+
+    def _sync_class_status_with_tags_for_sample(self, sample: SampleMetadata) -> None:
+        """根据样本的标签同步类别状态"""
+        if sample.tags and sample.class_status != "labeled":
+            sample.class_status = "labeled"
+        elif not sample.tags and sample.class_status == "labeled":
+            sample.class_status = "unlabeled"
+
     def move_sample(
         self,
         target: str,
@@ -441,3 +499,78 @@ class MetadataService:
     def _sample_matches_search(self, sample: SampleMetadata, search_text: str) -> bool:
         fields = [sample.sample_path, sample.image_path, sample.text_info or ""]
         return any(search_text in field.lower() for field in fields)
+
+    def move_folder(self, source_folder: str, target_folder: str) -> ProjectMetadata:
+        """Move all samples from source_folder to target_folder, updating paths and regenerating IDs."""
+        from app.services.scanner import sample_id_from_path
+
+        metadata = self.load()
+
+        # Normalize paths (remove trailing slashes)
+        source_folder = source_folder.rstrip("/")
+        target_folder = target_folder.rstrip("/")
+
+        if source_folder == target_folder:
+            raise HTTPException(status_code=400, detail="源文件夹和目标文件夹相同")
+
+        # Find all samples in the source folder (including subfolders)
+        samples_to_move = []
+        for sample_id, sample in list(metadata.samples.items()):
+            if sample.sample_path == source_folder or sample.sample_path.startswith(f"{source_folder}/"):
+                samples_to_move.append((sample_id, sample))
+
+        if not samples_to_move:
+            raise HTTPException(status_code=404, detail=f"文件夹 '{source_folder}' 下没有样本")
+
+        # Move each sample
+        for old_id, sample in samples_to_move:
+            # Calculate new paths
+            if sample.sample_path == source_folder:
+                new_sample_path = target_folder
+            else:
+                # Subfolder: replace the source prefix with target
+                relative = sample.sample_path[len(source_folder):]  # e.g., "/subfolder/sample"
+                new_sample_path = target_folder + relative
+
+            # Update image_path
+            if sample.image_path.startswith(f"{sample.sample_path}/"):
+                relative_image = sample.image_path[len(sample.sample_path):]
+                new_image_path = new_sample_path + relative_image
+            else:
+                new_image_path = sample.image_path
+
+            # Update text_info if present
+            new_text_info = sample.text_info
+            if new_text_info and new_text_info.startswith(f"{sample.sample_path}/"):
+                relative_text = new_text_info[len(sample.sample_path):]
+                new_text_info = new_sample_path + relative_text
+
+            # Generate new sample_id from new path
+            new_id = sample_id_from_path(new_sample_path)
+
+            # Check if new ID already exists (and is not the same sample)
+            if new_id in metadata.samples and new_id != old_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"目标位置已存在样本 '{new_sample_path}'"
+                )
+
+            # Remove old sample and add new one
+            del metadata.samples[old_id]
+            metadata.samples[new_id] = SampleMetadata(
+                sample_id=new_id,
+                sample_path=new_sample_path,
+                image_path=new_image_path,
+                text_info=new_text_info,
+                class_status=sample.class_status,
+                layout_type=sample.layout_type,
+                boundaries=sample.boundaries,
+                tags=sample.tags,
+                archived=sample.archived,
+                trashed=sample.trashed,
+                flagged=sample.flagged,
+                time_updated=metadata_timestamp(),
+            )
+
+        self.save(metadata)
+        return metadata

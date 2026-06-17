@@ -9,6 +9,7 @@ from app.models import (
     BackupResponse,
     BatchMetadataRequest,
     BatchMetadataResponse,
+    BatchTagRequest,
     CatalogCreateRequest,
     CatalogImportRequest,
     CatalogOpenRequest,
@@ -18,6 +19,7 @@ from app.models import (
     ExportResponse,
     InitResponse,
     MetadataUpdateRequest,
+    MoveFolderRequest,
     MoveRequest,
     ProjectMetadata,
     RenameTagPathRequest,
@@ -125,6 +127,15 @@ async def batch_update_metadata(request: BatchMetadataRequest) -> BatchMetadataR
     return metadata_service().batch_update(request)
 
 
+@app.post("/api/samples/batch-tag", response_model=BatchMetadataResponse)
+async def batch_tag(request: BatchTagRequest) -> BatchMetadataResponse:
+    return metadata_service().batch_tag(
+        sample_ids=request.sample_ids,
+        tag_path=request.tag_path,
+        action=request.action,
+    )
+
+
 @app.post("/api/workspace/move", response_model=ProjectMetadata)
 async def move_sample(request: MoveRequest) -> ProjectMetadata:
     return metadata_service().move_sample(
@@ -152,6 +163,11 @@ async def update_tag(request: UpdateTagRequest) -> ProjectMetadata:
 @app.post("/api/tags/rename-path", response_model=ProjectMetadata)
 async def rename_tag_path(request: RenameTagPathRequest) -> ProjectMetadata:
     return metadata_service().rename_tag_path(request.old_tag_path, request.new_tag_path)
+
+
+@app.post("/api/samples/move-folder", response_model=ProjectMetadata)
+async def move_folder(request: MoveFolderRequest) -> ProjectMetadata:
+    return metadata_service().move_folder(request.source_folder, request.target_folder)
 
 
 @app.post("/api/metadata/backup", response_model=BackupResponse)

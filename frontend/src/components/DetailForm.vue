@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, inject } from "vue";
 
-import { WORKSPACE_KEY } from "../keys";
+import { FILTERS_KEY, WORKSPACE_KEY } from "../keys";
 import type { LayoutType, SampleMetadata, SampleStatus } from "../types";
 
 const workspace = inject(WORKSPACE_KEY)!;
+const filters = inject(FILTERS_KEY)!;
 
 const props = defineProps<{
   sample: SampleMetadata;
@@ -125,7 +126,7 @@ function categoryStatusLabel(sample: SampleMetadata): string {
         <span class="boundary-sep">,</span>
         <span class="boundary-value">{{ sample.boundaries[1].toFixed(4) }}</span>
       </div>
-      <p class="boundary-hint">拖动图片中的橙色竖线调整，靠近 1/3、1/2、2/3 自动吸附</p>
+      <p class="boundary-hint">拖动图片中的橙色竖线调整{{ filters.autoSnap ? "，靠近 1/3、1/2、2/3 自动吸附" : "（自动吸附已关闭）" }}</p>
     </div>
 
     <!-- 文件信息 -->
