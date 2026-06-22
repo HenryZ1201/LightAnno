@@ -1009,8 +1009,10 @@ input[type="color"] {
 
 .detail-panel {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   background: #181818;
+  min-height: 0;
 }
 
 .detail-header {
@@ -1024,12 +1026,16 @@ input[type="color"] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   gap: 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .detail-form {
   display: grid;
   align-content: start;
   gap: 20px;
+  min-height: 0;
+  overflow: auto;
   border-left: 1px solid #303030;
   padding-left: 16px;
 }
@@ -1358,7 +1364,12 @@ input[type="color"] {
 
 .boundary-canvas-wrap {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
   border: 1px solid #303030;
   border-radius: 6px;
@@ -1367,7 +1378,8 @@ input[type="color"] {
 
 .boundary-canvas {
   display: block;
-  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
   touch-action: none;
   cursor: crosshair;
 }

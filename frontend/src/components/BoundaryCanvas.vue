@@ -113,10 +113,26 @@ function resizeCanvas(): void {
   const image = imageElement.value;
   if (!container) return;
 
-  const width = Math.max(container.clientWidth, 320);
-  const aspectHeight = image ? width * (image.naturalHeight / image.naturalWidth) : 560;
-  canvasWidth.value = width;
-  canvasHeight.value = aspectHeight;
+  const availableWidth = Math.max(container.clientWidth, 320);
+  const availableHeight = Math.max(container.clientHeight, 320);
+
+  if (!image) {
+    canvasWidth.value = availableWidth;
+    canvasHeight.value = availableHeight;
+    return;
+  }
+
+  const imageAspect = image.naturalWidth / image.naturalHeight;
+  const availableAspect = availableWidth / availableHeight;
+
+  if (imageAspect > availableAspect) {
+    canvasWidth.value = availableWidth;
+    canvasHeight.value = availableWidth / imageAspect;
+    return;
+  }
+
+  canvasHeight.value = availableHeight;
+  canvasWidth.value = availableHeight * imageAspect;
 }
 
 function handleWindowResize(): void {
