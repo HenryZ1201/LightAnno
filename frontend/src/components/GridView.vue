@@ -106,7 +106,61 @@ function handleResize(): void {
 onMounted(() => {
   handleResize();
   window.addEventListener("resize", handleResize);
+  scrollToSelectedSample();
 });
+
+function scrollToSelectedSample(): void {
+  if (!gridContainerRef.value) return;
+
+  const selectedId = selection.selectedSampleId;
+  if (!selectedId) return;
+
+  // Find the selected sample in visibleSamples
+  let targetIndex = props.visibleSamples.findIndex((s) => s.sample_id === selectedId);
+
+  // If not found (filtered out), find the nearest visible sample
+  if (targetIndex === -1 && workspace.metadata?.samples[selectedId]) {
+    const allSamples = workspace.samples;
+    const selectedIndexInAll = allSamples.findIndex((s) => s.sample_id === selectedId);
+
+    if (selectedIndexInAll === -1) return;
+
+    // Create a Map for O(1) lookup: sample_id → index in visibleSamples
+    const visibleIndexMap = new Map(
+      props.visibleSamples.map((s, i) => [s.sample_id, i])
+    );
+
+    // Search outward from the selected index in allSamples
+    for (let offset = 1; offset < allSamples.length; offset++) {
+      for (const direction of [1, -1]) {
+        const checkIndex = selectedIndexInAll + direction * offset;
+        if (checkIndex < 0 || checkIndex >= allSamples.length) continue;
+
+        const sampleId = allSamples[checkIndex].sample_id;
+        const visibleIndex = visibleIndexMap.get(sampleId);
+        if (visibleIndex !== undefined) {
+          targetIndex = visibleIndex;
+          break;
+        }
+      }
+      if (targetIndex !== -1) break;
+    }
+  }
+
+  if (targetIndex === -1) return;
+
+  // Calculate scroll position
+  const { columns, rowHeight } = gridDimensions.value;
+  const targetRow = Math.floor(targetIndex / columns);
+  const targetScrollTop = targetRow * rowHeight;
+
+  // Center the target row in the viewport
+  const containerHeight = gridContainerRef.value.clientHeight;
+  const centeredScrollTop = Math.max(0, targetScrollTop - containerHeight / 2 + rowHeight / 2);
+
+  gridContainerRef.value.scrollTop = centeredScrollTop;
+  scrollTop.value = centeredScrollTop;
+}
 
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
@@ -119,10 +173,7 @@ const visibleSamplesSignature = computed(() => {
 });
 
 watch(visibleSamplesSignature, () => {
-  if (gridContainerRef.value) {
-    gridContainerRef.value.scrollTop = 0;
-  }
-  scrollTop.value = 0;
+  scrollToSelectedSample();
 });
 
 function handleGridPointerDown(event: PointerEvent): void {

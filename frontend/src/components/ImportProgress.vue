@@ -1,38 +1,47 @@
 <script setup lang="ts">
-import { inject } from "vue";
+import { computed, inject } from "vue";
 
 import { WORKSPACE_KEY } from "../keys";
 
 const workspace = inject(WORKSPACE_KEY)!;
+
+const activeProgress = computed(() => workspace.importProgress ?? workspace.scanProgress);
+const progressPercent = computed(() =>
+  workspace.importProgress ? workspace.importProgressPercent : workspace.scanProgressPercent,
+);
+const isImport = computed(() => workspace.importProgress !== null);
+const title = computed(() => (isImport.value ? "正在导入文件夹..." : "正在扫描数据集..."));
+const completeText = computed(() => (isImport.value ? "✓ 导入完成！" : "✓ 扫描完成！"));
+const errorPrefix = computed(() => (isImport.value ? "导入失败" : "扫描失败"));
 </script>
 
 <template>
-  <div v-if="workspace.importProgress" class="import-progress-overlay">
+  <div v-if="activeProgress" class="import-progress-overlay">
     <div class="import-progress-modal">
-      <h3>正在导入文件夹...</h3>
+      <h3>{{ title }}</h3>
 
-      <div v-if="workspace.importProgress.type === 'progress'" class="progress-info">
+      <div v-if="activeProgress.type === 'progress'" class="progress-info">
         <div class="progress-bar-container">
           <div
             class="progress-bar"
-            :style="{ width: `${workspace.importProgressPercent}%` }"
+            :style="{ width: `${progressPercent}%` }"
           ></div>
         </div>
         <p class="progress-text">
-          {{ workspace.importProgress.current }} / {{ workspace.importProgress.total }}
-          ({{ workspace.importProgressPercent }}%)
+          {{ activeProgress.current }} / {{ activeProgress.total }}
+          ({{ progressPercent }}%)
         </p>
         <p class="progress-folder">
-          正在扫描: {{ workspace.importProgress.current_folder }}
+          正在扫描: {{ activeProgress.current_folder }}
         </p>
       </div>
 
-      <div v-else-if="workspace.importProgress.type === 'complete'" class="progress-complete">
-        <p class="success-text">✓ 导入完成！</p>
+      <div v-else-if="activeProgress.type === 'complete'" class="progress-complete">
+        <p class="success-text">{{ completeText }}</p>
       </div>
 
-      <div v-else-if="workspace.importProgress.type === 'error'" class="progress-error">
-        <p class="error-text">✗ 导入失败: {{ workspace.importProgress.message }}</p>
+      <div v-else-if="activeProgress.type === 'error'" class="progress-error">
+        <p class="error-text">✗ {{ errorPrefix }}: {{ activeProgress.message }}</p>
       </div>
     </div>
   </div>

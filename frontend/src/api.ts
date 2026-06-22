@@ -28,6 +28,72 @@ export async function initializeWorkspace(): Promise<InitResponse> {
   return requestJson<InitResponse>("/api/workspace/init");
 }
 
+export interface InitProgress {
+  type: "progress" | "complete" | "error";
+  current?: number;
+  total?: number;
+  current_folder?: string;
+  samples?: SampleMetadata[];
+  warnings?: any[];
+  metadata?: ProjectMetadata;
+  message?: string;
+}
+
+export function initializeWorkspaceWithProgress(
+  onProgress: (progress: InitProgress) => void,
+): Promise<InitResponse> {
+  return new Promise((resolve, reject) => {
+    const response = fetch(`${API_BASE_URL}/api/workspace/init`);
+
+    response.then(async (res) => {
+      if (!res.ok) {
+        reject(new Error(`Init failed: ${res.status}`));
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) {
+        reject(new Error("No response body"));
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            try {
+              const progress = JSON.parse(data) as InitProgress;
+              onProgress(progress);
+
+              if (progress.type === "complete") {
+                resolve({
+                  metadata: progress.metadata!,
+                  samples: progress.samples ?? [],
+                  warnings: progress.warnings ?? [],
+                });
+              } else if (progress.type === "error") {
+                reject(new Error(progress.message));
+              }
+            } catch (e) {
+              console.error("Failed to parse progress:", e);
+            }
+          }
+        }
+      }
+    }).catch(reject);
+  });
+}
+
 export async function listCatalogs(): Promise<CatalogsResponse> {
   return requestJson<CatalogsResponse>("/api/catalogs");
 }

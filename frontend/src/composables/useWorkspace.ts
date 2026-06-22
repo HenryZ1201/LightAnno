@@ -10,7 +10,7 @@ import {
   fetchHealth,
   importFolder,
   importFolderWithProgress,
-  initializeWorkspace,
+  initializeWorkspaceWithProgress,
   listCatalogs,
   moveFolder,
   openCatalog,
@@ -21,6 +21,7 @@ import {
   upsertTag,
   type HealthResponse,
   type ImportProgress,
+  type InitProgress,
 } from "../api";
 import type {
   CatalogSummary,
@@ -98,6 +99,14 @@ export function useWorkspace() {
     return Math.round((current / total) * 100);
   });
 
+  // Scan/init progress state
+  const scanProgress = ref<InitProgress | null>(null);
+  const scanProgressPercent = computed(() => {
+    if (!scanProgress.value || scanProgress.value.type !== "progress") return 0;
+    const { current = 0, total = 1 } = scanProgress.value;
+    return Math.round((current / total) * 100);
+  });
+
   const samples = computed(() => Object.values(metadata.value?.samples ?? {}));
   const sampleStats = computed(() => {
     let labeled = 0;
@@ -161,14 +170,18 @@ export function useWorkspace() {
   async function loadWorkspace(): Promise<void> {
     loading.value = true;
     errorMessage.value = null;
+    scanProgress.value = null;
     try {
-      const response = await initializeWorkspace();
+      const response = await initializeWorkspaceWithProgress((progress) => {
+        scanProgress.value = progress;
+      });
       applyWorkspaceResponse(response);
       await refreshCatalogs();
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : "无法初始化工作区";
     } finally {
       loading.value = false;
+      scanProgress.value = null;
     }
   }
 
@@ -479,6 +492,8 @@ export function useWorkspace() {
     activeCatalog,
     importProgress,
     importProgressPercent,
+    scanProgress,
+    scanProgressPercent,
     initHealth,
     loadWorkspace,
     refreshCatalogs,

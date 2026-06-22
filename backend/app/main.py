@@ -108,14 +108,19 @@ async def import_folder_stream(catalog_id: str, request: CatalogImportRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.get("/api/workspace/init", response_model=InitResponse)
-async def initialize_workspace() -> InitResponse:
-    metadata, warnings = metadata_service().initialize_workspace()
-    return InitResponse(
-        metadata=metadata,
-        samples=[],
-        warnings=warnings,
-    )
+@app.get("/api/workspace/init")
+async def initialize_workspace():
+    """Initialize workspace with progress streaming."""
+    import json
+
+    def event_stream():
+        try:
+            for update in metadata_service().initialize_workspace_with_progress():
+                yield f"data: {json.dumps(update, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else str(o))}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/api/images/{sample_id}")
