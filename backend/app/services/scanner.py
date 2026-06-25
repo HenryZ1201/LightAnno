@@ -23,6 +23,36 @@ def count_folders(dataset_root: Path) -> int:
     return sum(1 for path in dataset_root.rglob("*") if path.is_dir())
 
 
+def safe_rglob(root: Path, warnings: list[SampleWarning]) -> list[Path]:
+    """Recursively list directories, catching permission errors."""
+    result = []
+    try:
+        for path in root.iterdir():
+            try:
+                if path.is_dir():
+                    result.append(path)
+                    result.extend(safe_rglob(path, warnings))
+            except PermissionError:
+                warnings.append(
+                    SampleWarning(
+                        sample_path=relative_posix(path, root.parent),
+                        code="PERMISSION_DENIED",
+                        message=f"无法访问文件夹（权限不足）: {path.name}",
+                        details={"path": str(path)},
+                    )
+                )
+    except PermissionError:
+        warnings.append(
+            SampleWarning(
+                sample_path=relative_posix(root, root.parent),
+                code="PERMISSION_DENIED",
+                message=f"无法访问文件夹（权限不足）: {root.name}",
+                details={"path": str(root)},
+            )
+        )
+    return result
+
+
 def scan_dataset_with_progress(
     dataset_root: Path,
 ) -> Generator[dict, None, tuple[dict[str, SampleMetadata], list[SampleWarning]]]:
@@ -32,8 +62,8 @@ def scan_dataset_with_progress(
     samples: dict[str, SampleMetadata] = {}
     warnings: list[SampleWarning] = []
 
-    # Get all folders first
-    all_folders = sorted(path for path in dataset_root.rglob("*") if path.is_dir())
+    # Get all folders first with permission error handling
+    all_folders = sorted(safe_rglob(dataset_root, warnings))
     total_folders = len(all_folders)
 
     for idx, folder in enumerate(all_folders, 1):
@@ -45,8 +75,21 @@ def scan_dataset_with_progress(
                 "current_folder": folder.name,
             }
 
-        child_dirs = sorted(path for path in folder.iterdir() if path.is_dir())
-        files = sorted(path for path in folder.iterdir() if path.is_file())
+        sample_path = relative_posix(folder, dataset_root)
+
+        try:
+            child_dirs = sorted(path for path in folder.iterdir() if path.is_dir())
+            files = sorted(path for path in folder.iterdir() if path.is_file())
+        except PermissionError:
+            warnings.append(
+                SampleWarning(
+                    sample_path=sample_path,
+                    code="PERMISSION_DENIED",
+                    message=f"无法访问文件夹内容（权限不足）: {folder.name}",
+                    details={"path": str(folder)},
+                )
+            )
+            continue
 
         # Directories containing only subdirectories are treated as grouping folders.
         if child_dirs and not files:

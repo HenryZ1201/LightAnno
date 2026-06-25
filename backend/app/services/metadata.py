@@ -70,7 +70,30 @@ class MetadataService:
         tmp_path = self.metadata_path.with_suffix(".json.tmp")
         payload = metadata.model_dump(mode="json")
         tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp_path, self.metadata_path)
+
+        # Windows 上 os.replace 可能因文件锁定失败，添加重试机制
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                os.replace(tmp_path, self.metadata_path)
+                break
+            except PermissionError:
+                if attempt == max_retries - 1:
+                    # 最后一次尝试失败，改用 shutil.move 作为后备
+                    try:
+                        if self.metadata_path.exists():
+                            self.metadata_path.unlink()
+                        shutil.move(str(tmp_path), str(self.metadata_path))
+                    except Exception as e:
+                        raise PermissionError(
+                            f"无法保存 metadata 文件: {e}\n"
+                            f"可能原因: 文件被其他程序锁定（如杀毒软件、文件同步工具）\n"
+                            f"请关闭可能访问该文件的程序后重试"
+                        ) from e
+                else:
+                    time.sleep(0.1 * (2 ** attempt))  # 指数退避：0.1s, 0.2s, 0.4s
+
         self._metadata_cache = metadata
         self._metadata_cache_mtime_ns = self.metadata_path.stat().st_mtime_ns
 
