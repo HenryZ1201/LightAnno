@@ -217,11 +217,21 @@ function drawBoundaryLine(
 
 function handlePointerDown(event: PointerEvent): void {
   const index = nearestBoundaryIndex(event);
-  if (index === null) return;
 
-  draggingIndex.value = index;
-  canvasRef.value?.setPointerCapture(event.pointerId);
-  updateBoundaryFromPointer(event);
+  if (index !== null) {
+    // 点击在已有边界线附近，开始拖动
+    draggingIndex.value = index;
+    canvasRef.value?.setPointerCapture(event.pointerId);
+    updateBoundaryFromPointer(event);
+  } else if (activeBoundaries.value.length > 0) {
+    // 点击在空白区域，直接移动最近的边界线到点击位置
+    const closestIndex = closestBoundaryIndexToClick(event);
+    if (closestIndex !== null) {
+      draggingIndex.value = closestIndex;
+      canvasRef.value?.setPointerCapture(event.pointerId);
+      updateBoundaryFromPointer(event);
+    }
+  }
 }
 
 function handlePointerMove(event: PointerEvent): void {
@@ -233,6 +243,14 @@ function handlePointerMove(event: PointerEvent): void {
   hoverIndex.value = nearestBoundaryIndex(event);
   canvasRef.value?.classList.toggle("is-hovering-line", hoverIndex.value !== null);
   drawCanvas();
+}
+
+function handlePointerLeave(event: PointerEvent): void {
+  // 如果正在拖动，不要结束拖动（因为使用了 setPointerCapture，会继续收到事件）
+  if (draggingIndex.value !== null) {
+    return;
+  }
+  handlePointerUp(event);
 }
 
 function handlePointerUp(event: PointerEvent): void {
@@ -309,6 +327,34 @@ function nearestBoundaryIndex(event: PointerEvent): number | null {
   return bestIndex;
 }
 
+function closestBoundaryIndexToClick(event: PointerEvent): number | null {
+  if (!activeBoundaries.value.length) return null;
+
+  const rect = imageRect.value;
+  const canvasRect = canvasRef.value?.getBoundingClientRect();
+  if (!canvasRect) return null;
+
+  const pointerX = event.clientX - canvasRect.left;
+  const pointerY = event.clientY - canvasRect.top;
+  const insideY = pointerY >= rect.y && pointerY <= rect.y + rect.height;
+  const insideX = pointerX >= rect.x && pointerX <= rect.x + rect.width;
+  if (!insideY || !insideX) return null;
+
+  // Find the closest boundary line to the click position
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  activeBoundaries.value.forEach((boundary, index) => {
+    const x = rect.x + boundary * rect.width;
+    const distance = Math.abs(pointerX - x);
+    if (distance < bestDistance) {
+      bestIndex = index;
+      bestDistance = distance;
+    }
+  });
+
+  return bestIndex;
+}
+
 function snap(value: number): number {
   if (!filters.autoSnap) return value;
   const target = SNAP_POINTS.find((point) => Math.abs(value - point) <= SNAP_TOLERANCE);
@@ -333,7 +379,7 @@ function round4(value: number): number {
       @pointermove="handlePointerMove"
       @pointerup="handlePointerUp"
       @pointercancel="handlePointerUp"
-      @pointerleave="handlePointerUp"
+      @pointerleave="handlePointerLeave"
     ></canvas>
 
     <div v-if="imageLoadState === 'loading'" class="canvas-hint canvas-hint-warning">正在加载图片...</div>
