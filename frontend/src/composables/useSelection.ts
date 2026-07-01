@@ -10,7 +10,11 @@ export function useSelection() {
 
   function openDetail(sample: SampleMetadata): void {
     selectedSampleId.value = sample.sample_id;
-    selectedSampleIds.value = [sample.sample_id];
+    // 保留多选列表，只更新当前主选中项
+    // 如果该样本不在多选中，则添加到多选中
+    if (!selectedSampleIds.value.includes(sample.sample_id)) {
+      selectedSampleIds.value = [...selectedSampleIds.value, sample.sample_id];
+    }
     activeView.value = "detail";
   }
 
