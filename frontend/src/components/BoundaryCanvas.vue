@@ -42,6 +42,8 @@ const localBoundaries = ref<[number, number]>([...props.boundaries] as [number, 
 const imageLoadState = ref<"loading" | "loaded" | "error">("loading");
 
 let resizeObserver: ResizeObserver | null = null;
+let clickTimer: ReturnType<typeof setTimeout> | null = null;
+const DOUBLE_CLICK_DELAY = 250; // 双击检测延迟（毫秒）
 
 const activeBoundaries = computed(() => {
   if (props.layoutType === "unlabeled" || props.layoutType === "single") return [];
@@ -218,20 +220,31 @@ function drawBoundaryLine(
 function handlePointerDown(event: PointerEvent): void {
   const index = nearestBoundaryIndex(event);
 
-  if (index !== null) {
-    // 点击在已有边界线附近，开始拖动
-    draggingIndex.value = index;
-    canvasRef.value?.setPointerCapture(event.pointerId);
-    updateBoundaryFromPointer(event);
-  } else if (activeBoundaries.value.length > 0) {
-    // 点击在空白区域，直接移动最近的边界线到点击位置
-    const closestIndex = closestBoundaryIndexToClick(event);
-    if (closestIndex !== null) {
-      draggingIndex.value = closestIndex;
+  // 清除之前的定时器（如果有）
+  if (clickTimer) {
+    clearTimeout(clickTimer);
+    clickTimer = null;
+  }
+
+  // 延迟执行边界线操作，以便检测是否为双击
+  clickTimer = setTimeout(() => {
+    clickTimer = null;
+
+    if (index !== null) {
+      // 点击在已有边界线附近，开始拖动
+      draggingIndex.value = index;
       canvasRef.value?.setPointerCapture(event.pointerId);
       updateBoundaryFromPointer(event);
+    } else if (activeBoundaries.value.length > 0) {
+      // 点击在空白区域，直接移动最近的边界线到点击位置
+      const closestIndex = closestBoundaryIndexToClick(event);
+      if (closestIndex !== null) {
+        draggingIndex.value = closestIndex;
+        canvasRef.value?.setPointerCapture(event.pointerId);
+        updateBoundaryFromPointer(event);
+      }
     }
-  }
+  }, DOUBLE_CLICK_DELAY);
 }
 
 function handlePointerMove(event: PointerEvent): void {
@@ -368,10 +381,19 @@ function clamp(value: number, min: number, max: number): number {
 function round4(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
+
+function handleDoubleClick(): void {
+  // 双击时取消待执行的单击操作
+  if (clickTimer) {
+    clearTimeout(clickTimer);
+    clickTimer = null;
+  }
+  emit("dblclick");
+}
 </script>
 
 <template>
-  <div ref="containerRef" class="boundary-canvas-wrap" @dblclick="emit('dblclick')">
+  <div ref="containerRef" class="boundary-canvas-wrap" @dblclick="handleDoubleClick">
     <canvas
       ref="canvasRef"
       class="boundary-canvas"
