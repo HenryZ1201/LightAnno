@@ -24,9 +24,8 @@ export function useSelection() {
     index: number,
     visibleSamples: SampleMetadata[],
   ): void {
-    selectedSampleId.value = sample.sample_id;
-
     if (event.shiftKey && lastSelectedIndex.value !== null) {
+      selectedSampleId.value = sample.sample_id;
       const start = Math.min(lastSelectedIndex.value, index);
       const end = Math.max(lastSelectedIndex.value, index);
       selectedSampleIds.value = visibleSamples.slice(start, end + 1).map((s) => s.sample_id);
@@ -34,13 +33,25 @@ export function useSelection() {
     }
 
     if (event.metaKey || event.ctrlKey) {
-      selectedSampleIds.value = selectedSampleIds.value.includes(sample.sample_id)
-        ? selectedSampleIds.value.filter((id) => id !== sample.sample_id)
-        : [...selectedSampleIds.value, sample.sample_id];
+      const isCurrentlySelected = selectedSampleIds.value.includes(sample.sample_id);
+      if (isCurrentlySelected) {
+        // 取消选择
+        selectedSampleIds.value = selectedSampleIds.value.filter((id) => id !== sample.sample_id);
+        // 如果取消的是主选中项，将主选中改为多选列表的第一项
+        if (selectedSampleId.value === sample.sample_id) {
+          selectedSampleId.value = selectedSampleIds.value[0] ?? null;
+        }
+      } else {
+        // 添加到选择
+        selectedSampleIds.value = [...selectedSampleIds.value, sample.sample_id];
+        selectedSampleId.value = sample.sample_id;
+      }
       lastSelectedIndex.value = index;
       return;
     }
 
+    // 普通点击
+    selectedSampleId.value = sample.sample_id;
     selectedSampleIds.value = [sample.sample_id];
     lastSelectedIndex.value = index;
   }

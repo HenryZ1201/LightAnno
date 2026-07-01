@@ -83,6 +83,44 @@ async function unflagSelected(): Promise<void> {
   closeMenus();
 }
 
+async function setBatchLayout(layoutType: "single" | "dual" | "triple"): Promise<void> {
+  if (!selection.selectedSampleIds.length) return;
+
+  let boundaries: [number, number] = [0, 0];
+  if (layoutType === "dual") {
+    const input = window.prompt("设置双栏边界值 (0-1，如 0.5):", "0.5");
+    if (input === null) return;
+    const value = parseFloat(input);
+    if (isNaN(value) || value < 0 || value > 1) {
+      window.alert("边界值必须是 0-1 之间的数字");
+      return;
+    }
+    boundaries = [value, 0];
+  } else if (layoutType === "triple") {
+    const input1 = window.prompt("设置三栏第一边界值 (0-1，如 0.33):", "0.33");
+    if (input1 === null) return;
+    const value1 = parseFloat(input1);
+    if (isNaN(value1) || value1 < 0 || value1 > 1) {
+      window.alert("边界值必须是 0-1 之间的数字");
+      return;
+    }
+    const input2 = window.prompt("设置三栏第二边界值 (0-1，如 0.67):", "0.67");
+    if (input2 === null) return;
+    const value2 = parseFloat(input2);
+    if (isNaN(value2) || value2 < 0 || value2 > 1) {
+      window.alert("边界值必须是 0-1 之间的数字");
+      return;
+    }
+    boundaries = [value1, value2];
+  }
+
+  await workspace.batchPatchSamples(selection.selectedSampleIds, {
+    layout_type: layoutType,
+    boundaries,
+  });
+  closeMenus();
+}
+
 function saveMetadataNow(): void {
   workspace.saveMetadataNow();
   closeMenus();
@@ -195,6 +233,31 @@ onUnmounted(() => {
         >
           取消存疑（{{ selection.selectedSampleIds.length }}）
         </button>
+        <hr class="menu-divider" />
+        <div class="menu-subgroup">
+          <span>批量设置分栏（{{ selection.selectedSampleIds.length }}）</span>
+          <button
+            type="button"
+            :disabled="!selection.selectedSampleIds.length"
+            @click="setBatchLayout('single')"
+          >
+            单栏
+          </button>
+          <button
+            type="button"
+            :disabled="!selection.selectedSampleIds.length"
+            @click="setBatchLayout('dual')"
+          >
+            双栏...
+          </button>
+          <button
+            type="button"
+            :disabled="!selection.selectedSampleIds.length"
+            @click="setBatchLayout('triple')"
+          >
+            三栏...
+          </button>
+        </div>
         <hr class="menu-divider" />
         <div class="menu-subgroup">
           <span>基于类别筛选</span>

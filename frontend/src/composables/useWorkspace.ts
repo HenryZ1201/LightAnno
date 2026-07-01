@@ -390,7 +390,6 @@ export function useWorkspace() {
       }
       return;
     }
-    loading.value = true;
     try {
       const response = await batchUpdateSamples(sampleIds, patch);
       metadata.value = response.metadata;
@@ -398,8 +397,6 @@ export function useWorkspace() {
       feedbackMessage.value = `批量更新完成：${okCount}/${sampleIds.length} 成功`;
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : "批量更新失败";
-    } finally {
-      loading.value = false;
     }
   }
 
@@ -420,7 +417,6 @@ export function useWorkspace() {
       }
       return;
     }
-    loading.value = true;
     try {
       const response = await batchTag(sampleIds, tagPath, action);
       metadata.value = response.metadata;
@@ -428,8 +424,6 @@ export function useWorkspace() {
       feedbackMessage.value = `批量${action === "add" ? "添加" : "删除"}标签：${okCount}/${sampleIds.length} 成功`;
     } catch (error) {
       errorMessage.value = error instanceof Error ? error.message : "批量标签操作失败";
-    } finally {
-      loading.value = false;
     }
   }
 

@@ -109,11 +109,11 @@ onMounted(() => {
   scrollToSelectedSample();
 });
 
-function scrollToSelectedSample(): void {
-  if (!gridContainerRef.value) return;
+function scrollToSelectedSample(): boolean {
+  if (!gridContainerRef.value) return false;
 
   const selectedId = selection.selectedSampleId;
-  if (!selectedId) return;
+  if (!selectedId) return false;
 
   // Find the selected sample in visibleSamples
   let targetIndex = props.visibleSamples.findIndex((s) => s.sample_id === selectedId);
@@ -123,7 +123,7 @@ function scrollToSelectedSample(): void {
     const allSamples = workspace.samples;
     const selectedIndexInAll = allSamples.findIndex((s) => s.sample_id === selectedId);
 
-    if (selectedIndexInAll === -1) return;
+    if (selectedIndexInAll === -1) return false;
 
     // Create a Map for O(1) lookup: sample_id → index in visibleSamples
     const visibleIndexMap = new Map(
@@ -147,7 +147,7 @@ function scrollToSelectedSample(): void {
     }
   }
 
-  if (targetIndex === -1) return;
+  if (targetIndex === -1) return false;
 
   // Calculate scroll position
   const { columns, rowHeight } = gridDimensions.value;
@@ -160,6 +160,7 @@ function scrollToSelectedSample(): void {
 
   gridContainerRef.value.scrollTop = centeredScrollTop;
   scrollTop.value = centeredScrollTop;
+  return true;
 }
 
 onUnmounted(() => {
@@ -173,7 +174,11 @@ const visibleSamplesSignature = computed(() => {
 });
 
 watch(visibleSamplesSignature, () => {
-  scrollToSelectedSample();
+  // 筛选变化时，尝试滚动到选中样本，如果找不到则滚动到顶部
+  if (!scrollToSelectedSample() && gridContainerRef.value) {
+    gridContainerRef.value.scrollTop = 0;
+    scrollTop.value = 0;
+  }
 });
 
 function handleGridPointerDown(event: PointerEvent): void {
