@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { imageUrl } from "../api";
 import type { LayoutType, SampleMetadata, SampleStatus } from "../types";
 
@@ -12,6 +13,24 @@ const emit = defineEmits<{
   select: [payload: { sample: SampleMetadata; event: MouseEvent }];
   dblclick: [sample: SampleMetadata];
 }>();
+
+const showBoundaries = computed(() => {
+  return (
+    (props.sample.layout_type === "dual" || props.sample.layout_type === "triple") &&
+    props.sample.boundaries[0] > 0
+  );
+});
+
+const boundaryPositions = computed(() => {
+  if (!showBoundaries.value) return [];
+  if (props.sample.layout_type === "dual") {
+    return [props.sample.boundaries[0] * 100];
+  }
+  if (props.sample.layout_type === "triple") {
+    return [props.sample.boundaries[0] * 100, props.sample.boundaries[1] * 100];
+  }
+  return [];
+});
 
 function layoutLabel(layoutType: LayoutType): string {
   if (layoutType === "unlabeled") return "布局未标注";
@@ -52,6 +71,14 @@ function statusColor(status: SampleStatus): string {
       <span class="status-indicator" :style="{ background: statusColor(sample.class_status) }"></span>
       <span :class="categoryBadgeClass(sample)">{{ categoryLabel(sample) }}</span>
       <span class="layout-badge" :class="sample.layout_type">{{ layoutLabel(sample.layout_type) }}</span>
+      <div v-if="showBoundaries" class="boundary-lines">
+        <span
+          v-for="(pos, idx) in boundaryPositions"
+          :key="idx"
+          class="boundary-line"
+          :style="{ left: `${pos}%` }"
+        ></span>
+      </div>
     </div>
     <strong>{{ sample.sample_path }}</strong>
     <small>{{ sample.tags.join(", ") || "无标签" }}</small>

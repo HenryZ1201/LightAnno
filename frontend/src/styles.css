@@ -914,6 +914,25 @@ input[type="color"] {
   position: relative;
 }
 
+.boundary-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.boundary-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f97316;
+  box-shadow: 0 0 4px rgba(249, 115, 22, 0.6);
+  transform: translateX(-50%);
+}
+
 .sample-card img {
   width: 100%;
   aspect-ratio: 9 / 16;
