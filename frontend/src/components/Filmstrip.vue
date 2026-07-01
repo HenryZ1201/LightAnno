@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, inject, onMounted, onUnmounted, ref, watch } from "vue";
 
+import { SELECTION_KEY } from "../keys";
 import { imageUrl } from "../api";
 import type { SampleMetadata } from "../types";
 
+const selection = inject(SELECTION_KEY)!;
+
 const props = defineProps<{
   samples: SampleMetadata[];
-  selectedSampleId: string | null;
-}>();
-
-const emit = defineEmits<{
-  select: [sampleId: string];
 }>();
 
 const containerRef = ref<HTMLElement | null>(null);
@@ -32,6 +30,14 @@ const renderedSamples = computed(() => props.samples.slice(visibleRange.value.st
 const renderOffset = computed(() => visibleRange.value.start * ITEM_WIDTH);
 const totalWidth = computed(() => props.samples.length * ITEM_WIDTH);
 
+const selectedSampleIdSet = computed(() => new Set(selection.selectedSampleIds));
+
+function handleFrameClick(sample: SampleMetadata, event: MouseEvent): void {
+  const index = props.samples.findIndex((s) => s.sample_id === sample.sample_id);
+  if (index === -1) return;
+  selection.handleSampleClick(sample, event, index, props.samples);
+}
+
 function handleScroll(event: Event): void {
   scrollLeft.value = (event.target as HTMLElement).scrollLeft;
 }
@@ -50,7 +56,7 @@ onUnmounted(() => {
 });
 
 watch(
-  () => props.selectedSampleId,
+  () => selection.selectedSampleId,
   (sampleId) => {
     if (!sampleId || !containerRef.value) return;
     const index = props.samples.findIndex((sample) => sample.sample_id === sampleId);
@@ -75,8 +81,11 @@ watch(
           :key="`filmstrip-${sample.sample_id}`"
           type="button"
           class="filmstrip-frame"
-          :class="{ active: sample.sample_id === selectedSampleId }"
-          @click="emit('select', sample.sample_id)"
+          :class="{
+            active: sample.sample_id === selection.selectedSampleId,
+            'multi-selected': selectedSampleIdSet.has(sample.sample_id)
+          }"
+          @click="handleFrameClick(sample, $event)"
         >
           <img :src="imageUrl(sample.sample_id)" :alt="sample.sample_path" loading="lazy" />
           <span>{{ sample.layout_type }}</span>

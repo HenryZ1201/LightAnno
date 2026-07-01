@@ -201,10 +201,6 @@ function handleBackToGrid(): void {
   selection.backToGrid();
 }
 
-function handleSelectFilmstripFrame(sampleId: string): void {
-  selection.selectedSampleId = sampleId;
-}
-
 function handleToastDismiss(): void {
   workspace.feedbackMessage = null;
 }
@@ -305,11 +301,7 @@ function handleLayoutQuickFilter(event: Event): void {
 
         <div class="filmstrip-container" :style="{ height: `${filmstripHeight}px` }">
           <div class="filmstrip-resize-handle" @mousedown="startFilmstripResize"></div>
-          <Filmstrip
-            :samples="visibleSamples"
-            :selected-sample-id="selection.selectedSampleId"
-            @select="handleSelectFilmstripFrame"
-          />
+          <Filmstrip :samples="visibleSamples" />
         </div>
       </section>
       <div class="resize-handle resize-handle-right" @mousedown="startResize('right', $event)"></div>

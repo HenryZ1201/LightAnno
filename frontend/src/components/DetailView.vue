@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref } from "vue";
 
-import { FILTERS_KEY, WORKSPACE_KEY } from "../keys";
+import { FILTERS_KEY, SELECTION_KEY, WORKSPACE_KEY } from "../keys";
 import type { SampleMetadata } from "../types";
 import { imageUrl } from "../api";
 import BoundaryCanvas from "./BoundaryCanvas.vue";
@@ -9,6 +9,7 @@ import DetailForm from "./DetailForm.vue";
 
 const workspace = inject(WORKSPACE_KEY)!;
 const filters = inject(FILTERS_KEY)!;
+const selection = inject(SELECTION_KEY)!;
 
 const props = defineProps<{
   sample: SampleMetadata;
@@ -35,7 +36,12 @@ function saveBoundariesDebounced(boundaries: [number, number]): void {
     clearTimeout(boundarySaveTimer.value);
   }
   boundarySaveTimer.value = setTimeout(() => {
-    void workspace.patchSample(props.sample, { boundaries });
+    // 如果多选，批量更新所有选中样本的边界
+    if (selection.selectedSampleIds.length > 1) {
+      void workspace.batchPatchSamples(selection.selectedSampleIds, { boundaries });
+    } else {
+      void workspace.patchSample(props.sample, { boundaries });
+    }
   }, 300);
 }
 </script>
