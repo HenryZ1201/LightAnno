@@ -1041,6 +1041,16 @@ input[type="color"] {
   color: #e8e8e8;
 }
 
+.detail-position {
+  color: #8c8c8c;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 10px;
+  background: #252525;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 .detail-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
