@@ -103,9 +103,21 @@ function handleResize(): void {
   }
 }
 
+function handleScrollToSample(event: Event): void {
+  if (!gridContainerRef.value) return;
+  const customEvent = event as CustomEvent;
+  const { scrollTop: targetScrollTop, rowHeight } = customEvent.detail;
+  const containerHeight = gridContainerRef.value.clientHeight;
+  // Center the target row in the viewport
+  const centeredScrollTop = Math.max(0, targetScrollTop - containerHeight / 2 + rowHeight / 2);
+  gridContainerRef.value.scrollTop = centeredScrollTop;
+  scrollTop.value = centeredScrollTop;
+}
+
 onMounted(() => {
   handleResize();
   window.addEventListener("resize", handleResize);
+  window.addEventListener("scroll-to-sample", handleScrollToSample);
   scrollToSelectedSample();
 });
 
@@ -165,6 +177,7 @@ function scrollToSelectedSample(): boolean {
 
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
+  window.removeEventListener("scroll-to-sample", handleScrollToSample);
 });
 
 const visibleSamplesSignature = computed(() => {

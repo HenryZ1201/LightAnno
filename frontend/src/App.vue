@@ -151,6 +151,7 @@ const stats = computed(() => ({
 useKeyboard(
   workspace,
   selection,
+  filters,
   () => selectedSample.value,
   () => visibleSamples.value,
 );
